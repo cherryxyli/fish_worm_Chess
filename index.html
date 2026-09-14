@@ -1749,16 +1749,23 @@
                 this.nativeSocket = null;
             }
 
-            this.updateNativeStatusUI(false, '連線中 ws://localhost:8888 ...');
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            const host = window.location.hostname || 'localhost';
+            const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+            const wsUrl = isLocal
+                ? `${protocol}://${host}:8888`
+                : `${protocol}://${host}/ws`;
+
+            this.updateNativeStatusUI(false, `連線中 ${wsUrl} ...`);
 
             try {
-                this.nativeSocket = new WebSocket('ws://localhost:8888');
+                this.nativeSocket = new WebSocket(wsUrl);
 
                 this.nativeSocket.onopen = () => {
                     this.isNativeConnected = true;
-                    this.updateNativeStatusUI(true, '已連線本地皮卡魚 (AVX-512/多核心滿血運算)');
-                    this.showToast('🚀 已成功連線至本機原生皮卡魚引擎！');
-                    this.appendUcciLog('[Native WS] Connected to local bridge.');
+                    this.updateNativeStatusUI(true, '已連線本地皮卡魚 (VPS/伺服器版)');
+                    this.showToast('🚀 已成功連線至伺服器端皮卡魚引擎！');
+                    this.appendUcciLog('[Native WS] Connected to bridge.');
                     this.sendNativeCommand('ucci');
                     this.sendNativeCommand('isready');
                     if (this.autoAnalyze) this.triggerSearch();
@@ -1779,13 +1786,13 @@
 
                 this.nativeSocket.onclose = () => {
                     this.isNativeConnected = false;
-                    this.updateNativeStatusUI(false, '本地橋接已斷開 (請確認 pikafish_bridge.py 已啟動)');
+                    this.updateNativeStatusUI(false, `橋接已斷開 (${wsUrl})`);
                     this.appendUcciLog('[Native WS] Connection closed.');
                 };
 
                 this.nativeSocket.onerror = (err) => {
                     this.isNativeConnected = false;
-                    this.updateNativeStatusUI(false, '無法連線至 ws://localhost:8888');
+                    this.updateNativeStatusUI(false, `無法連線至 ${wsUrl}`);
                 };
             } catch (e) {
                 this.isNativeConnected = false;

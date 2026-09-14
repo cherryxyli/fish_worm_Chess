@@ -29,7 +29,7 @@ except ImportError:
 # 默認皮卡魚本機路徑 (可依個人安裝目錄修改，亦支援透過命令列參數傳入)
 DEFAULT_ENGINE_PATH = os.path.join(os.path.dirname(__file__), "pikafish.exe")
 PORT = int(os.environ.get("PIKAFISH_PORT", 8888))
-HOST = "localhost"
+HOST = os.environ.get("PIKAFISH_HOST", "localhost")
 
 
 def find_free_port():
