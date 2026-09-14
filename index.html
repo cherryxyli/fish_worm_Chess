@@ -1,0 +1,2720 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>皮卡魚·棋境 - 中國象棋專業級 AI 深度分析引擎 (Pikafish & BugChess Hybrid)</title>
+    <link rel="stylesheet" href="./tailwind.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", "微軟正黑體", "Noto Sans TC", sans-serif;
+            user-select: none;
+        }
+        .wood-board {
+            background-color: #d8b070;
+            background-image: radial-gradient(#dfb877 65%, #c89c56 100%);
+            box-shadow: inset 0 0 32px rgba(80, 40, 10, 0.45), 0 16px 36px rgba(0,0,0,0.6);
+        }
+        .wood-border {
+            border: 6px double #4e2b0e;
+            outline: 2px solid #7c4416;
+        }
+        .chess-piece {
+            transform: translate(-50%, -50%);
+            transition: transform 0.12s cubic-bezier(0.2, 0, 0.2, 1), box-shadow 0.12s ease;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.7), inset 0 -2px 4px rgba(0,0,0,0.45);
+        }
+        .chess-piece:hover {
+            transform: translate(-50%, -54%) scale(1.06);
+            box-shadow: 0 8px 14px -2px rgba(0, 0, 0, 0.55), inset 0 2px 4px rgba(255, 255, 255, 0.85), inset 0 -2px 4px rgba(0,0,0,0.45);
+        }
+        .chess-piece.selected {
+            transform: translate(-50%, -56%) scale(1.12);
+            outline: 3px solid #38bdf8;
+            box-shadow: 0 0 18px rgba(56, 189, 248, 0.95);
+            z-index: 40;
+        }
+        .piece-threatened::after {
+            content: "";
+            position: absolute;
+            inset: -4px;
+            border-radius: 9999px;
+            border: 2px dashed #f43f5e;
+            animation: spinThreat 4s linear infinite;
+        }
+        @keyframes spinThreat {
+            100% { transform: rotate(360deg); }
+        }
+        .move-indicator {
+            transform: translate(-50%, -50%);
+        }
+        .font-mono-code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center justify-start p-2 sm:p-3">
+
+    <!-- 頂部標題與即時遙測欄 -->
+    <header class="w-full max-w-7xl flex flex-wrap items-center justify-between py-2 px-4 mb-2 bg-slate-900/95 border border-slate-800 rounded-2xl shadow-2xl backdrop-blur-md gap-2">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-600 to-indigo-600 flex items-center justify-center font-black text-xl shadow-lg border border-amber-300/40 text-slate-950">
+                🐟
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="font-bold text-base tracking-wider text-amber-200">
+                        皮卡魚·小蟲深度分析引擎 <span class="text-[11px] font-normal px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono">Pikafish-Hybrid v26.4</span>
+                    </h1>
+                    <span id="engineWorkingBadge" class="hidden text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span> 背景深度思考中
+                    </span>
+                    <span id="nnueBadge" class="text-[10px] px-2 py-0.5 rounded bg-violet-500/25 text-violet-300 border border-violet-500/40 flex items-center gap-1 font-mono">
+                        <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span> HalfKP NNUE (11,340)
+                    </span>
+                    <span id="egtbBadge" class="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 font-mono">
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span> 殘局庫 EGTB
+                    </span>
+                </div>
+                <p class="text-[11px] text-slate-400">殘局雲庫(ChessDB EGTB) · 經典殘局定式裁決 · 三重複/長將裁決 · 11,340維 NNUE · 6級著法排序</p>
+            </div>
+        </div>
+
+        <!-- 局勢勝率與評估分動態條 -->
+        <div class="flex-1 max-w-md px-2 hidden md:flex flex-col gap-1">
+            <div class="flex justify-between text-[11px] font-bold font-mono-code">
+                <span class="text-rose-400">紅方勝率: <span id="redWinRate">50%</span></span>
+                <span id="evalScoreBadge" class="px-2 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700">CP: 0.00</span>
+                <span class="text-sky-300">黑方勝率: <span id="blackWinRate">50%</span></span>
+            </div>
+            <div class="w-full h-2.5 bg-slate-900 rounded-full overflow-hidden flex border border-slate-700/80 shadow-inner">
+                <div id="evalBarRed" class="bg-gradient-to-r from-rose-600 to-rose-400 h-full transition-all duration-300" style="width: 50%;"></div>
+                <div id="evalBarBlack" class="bg-gradient-to-r from-slate-600 to-sky-700 h-full transition-all duration-300" style="width: 50%;"></div>
+            </div>
+        </div>
+
+        <!-- 對弈模式與將軍/裁決徽章 -->
+        <div class="flex items-center gap-2 text-xs">
+            <!-- 雙軌引擎切換器 -->
+            <div class="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <span class="text-[10px] text-slate-400 px-1 font-semibold">引擎源:</span>
+                <button id="btnEngineSourceWeb" class="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 transition">
+                    🌐 Web內核
+                </button>
+                <button id="btnEngineSourceNative" class="px-2 py-0.5 rounded-lg text-[10px] text-slate-400 hover:text-slate-200 transition flex items-center gap-1">
+                    🚀 本地皮卡魚
+                </button>
+            </div>
+
+            <select id="playModeSelect" class="bg-slate-800 border border-slate-700 text-amber-300 rounded-xl px-2.5 py-1 text-xs font-semibold focus:outline-none focus:border-amber-500">
+                <option value="analyze">🔍 深度復盤拆棋</option>
+                <option value="vs_black">👤 執紅 vs 皮卡魚 (黑)</option>
+                <option value="vs_red">👤 執黑 vs 皮卡魚 (紅)</option>
+            </select>
+            <div id="turnIndicator" class="px-3 py-1 rounded-xl font-bold bg-rose-950/80 text-rose-300 border border-rose-800/80 flex items-center gap-1.5 shadow-sm">
+                <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                <span>紅先</span>
+            </div>
+            <div id="checkBadge" class="hidden px-2.5 py-1 rounded-xl font-bold bg-amber-500 text-slate-950 animate-bounce shadow">
+                ⚠️ 將軍！
+            </div>
+            <div id="repetitionBadge" class="hidden px-2.5 py-1 rounded-xl font-bold bg-purple-600 text-white shadow">
+                ⚖️ 三重複和棋
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要工作區域 -->
+    <main class="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+        
+        <!-- 左側主區：棋盤顯示與操作工具 (佔 6 格) -->
+        <section class="lg:col-span-6 flex flex-col items-center gap-2">
+            <!-- 棋盤外框容器 -->
+            <div class="relative p-2.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl">
+                <div id="boardContainer" class="relative wood-board wood-border rounded-xl cursor-pointer aspect-[460/512] w-[460px] max-w-[90vw]" style="max-height: 80vh;">
+                    <svg id="boardGridSvg" class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 460 512"></svg>
+                    
+                    <div id="riverLabelLayer" class="absolute inset-x-0 pointer-events-none flex justify-around items-center font-serif text-amber-950 font-black text-xl tracking-[0.6em] select-none opacity-85" style="top: 45.1%; height: 9.8%;">
+                        <span>楚河</span>
+                        <span>漢界</span>
+                    </div>
+
+                    <div id="indicatorsLayer" class="absolute inset-0 pointer-events-none z-10"></div>
+                    <div id="piecesLayer" class="absolute inset-0 z-20"></div>
+                    <svg id="aiArrowLayer" class="absolute inset-0 w-full h-full pointer-events-none z-30" viewBox="0 0 460 512"></svg>
+                </div>
+            </div>
+
+            <!-- 棋盤下方快捷操作列 -->
+            <div class="w-full max-w-[460px] flex flex-wrap items-center justify-between gap-1.5 bg-slate-900/90 p-2 rounded-xl border border-slate-800 text-xs shadow">
+                <div class="flex items-center gap-1">
+                    <button id="btnNewGame" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-200 rounded-lg transition border border-slate-700 flex items-center gap-1">
+                        <span>🔄</span> 新局
+                    </button>
+                    <button id="btnFlipBoard" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition border border-slate-700 flex items-center gap-1">
+                        <span>🔁</span> 翻轉
+                    </button>
+                    <button id="btnToggleEdit" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition border border-slate-700 flex items-center gap-1">
+                        <span>✏️</span> <span id="editModeLabel">擺棋</span>
+                    </button>
+                    <button id="btnToggleThreat" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-rose-300 rounded-lg transition border border-slate-700 flex items-center gap-1" title="顯示盤面受捉受威脅子力">
+                        <span>🎯</span> <span id="threatToggleLabel">捉子雷達</span>
+                    </button>
+                    <button id="btnSoundToggle" class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-lg border border-slate-700">
+                        🔊
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-1.5">
+                    <button id="btnAiRunOnce" class="px-3 py-1.5 bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white font-bold rounded-lg shadow transition flex items-center gap-1 active:scale-95">
+                        <span>⚡</span> 深度審局 (Go)
+                    </button>
+                </div>
+            </div>
+
+            <!-- 自由擺棋子力庫 -->
+            <div id="editPalette" class="hidden w-full max-w-[460px] bg-slate-900 border border-amber-600/40 p-2.5 rounded-xl flex flex-col gap-2">
+                <div class="flex items-center justify-between text-xs text-amber-300">
+                    <span class="font-bold">選取棋子落盤 (右鍵點盤上棋子可刪除)：</span>
+                    <button id="btnClearBoard" class="text-xs text-rose-400 hover:text-rose-300 underline">清空盤面</button>
+                </div>
+                <div class="flex flex-wrap gap-1.5 justify-center" id="palettePieces"></div>
+            </div>
+
+            <!-- 開局庫識別條與精準度 -->
+            <div class="w-full max-w-[460px] bg-slate-900/70 border border-slate-800/80 px-3 py-2 rounded-xl text-xs flex items-center justify-between text-slate-400">
+                <div class="flex items-center gap-1.5">
+                    <span class="text-amber-400">📖</span>
+                    <span>開局識別：</span>
+                    <span id="openingName" class="text-slate-200 font-bold">初始全盤布局</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-slate-400">精準度:</span>
+                    <span id="statAccuracyBadge" class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">紅98% | 黑98%</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- 右側輔助區：多分支推薦、性能遙測與分頁選項 (佔 6 格) -->
+        <section class="lg:col-span-6 flex flex-col gap-2.5">
+            <!-- 引擎遙測與棋風控制 -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-xl flex flex-col gap-2">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <h3 class="font-bold text-amber-300 text-xs tracking-wide">Pikafish-NNUE 搜尋內核</h3>
+                    </div>
+                    
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-[11px] text-slate-400">風格:</span>
+                        <div class="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-[10px]">
+                            <button id="styleConservative" class="px-2 py-0.5 rounded transition text-slate-400">穩健防守</button>
+                            <button id="styleBalanced" class="px-2 py-0.5 rounded transition bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40">均衡大師</button>
+                            <button id="styleAggressive" class="px-2 py-0.5 rounded transition text-slate-400">棄子強攻</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 性能統計網格 -->
+                <div class="grid grid-cols-4 gap-2 text-center text-xs font-mono-code pt-0.5">
+                    <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800/80">
+                        <div class="text-slate-400 text-[10px]">深度 Depth</div>
+                        <div id="statDepth" class="font-bold text-emerald-400 text-xs mt-0.5">0 / 0</div>
+                    </div>
+                    <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800/80">
+                        <div class="text-slate-400 text-[10px]">算力 NPS</div>
+                        <div id="statNps" class="font-bold text-cyan-400 text-xs mt-0.5">0</div>
+                    </div>
+                    <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800/80">
+                        <div class="text-slate-400 text-[10px]">節點 Nodes</div>
+                        <div id="statNodes" class="font-bold text-slate-200 text-xs mt-0.5">0</div>
+                    </div>
+                    <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800/80">
+                        <div class="text-slate-400 text-[10px]">置換表命中</div>
+                        <div id="statHashHits" class="font-bold text-amber-300 text-xs mt-0.5">0</div>
+                    </div>
+                </div>
+
+                <!-- 本地原版橋接狀態條 (當切換到本地模式時顯示) -->
+                <div id="nativeBridgeBar" class="hidden bg-slate-950/90 border border-cyan-500/30 p-2 rounded-xl flex items-center justify-between text-[11px]">
+                    <div class="flex items-center gap-1.5">
+                        <span id="nativeStatusDot" class="w-2 h-2 rounded-full bg-rose-500"></span>
+                        <span id="nativeStatusText" class="text-slate-300 font-mono">未連線至 ws://localhost:8888</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button id="btnRetryNativeWs" class="px-2 py-0.5 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 rounded border border-cyan-500/30 text-[10px]">
+                            重新連線
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 多分支推薦著法 (Multi-PV Lines) -->
+                <div class="flex flex-col gap-1.5 pt-1">
+                    <div class="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                        <span>深度審局推薦走法 (Multi-PV Top 3)：</span>
+                        <span class="text-slate-500 text-[10px]">點選高亮箭頭</span>
+                    </div>
+
+                    <div id="multiPvContainer" class="flex flex-col gap-1.5">
+                        <!-- PV 1 -->
+                        <div id="pvCard1" class="bg-slate-950 hover:bg-slate-900 border border-emerald-500/40 rounded-xl p-2 transition cursor-pointer flex flex-col gap-1">
+                            <div class="flex items-center justify-between text-xs">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold text-[10px]">首選</span>
+                                    <span id="pv1Notation" class="font-bold text-emerald-400 text-sm">等待思考...</span>
+                                </div>
+                                <span id="pv1Score" class="font-mono text-xs font-bold text-emerald-300">+0.00</span>
+                            </div>
+                            <div id="pv1Line" class="text-[11px] text-slate-400 font-mono-code truncate pl-1">-</div>
+                        </div>
+
+                        <!-- PV 2 -->
+                        <div id="pvCard2" class="bg-slate-950 hover:bg-slate-900 border border-cyan-500/30 rounded-xl p-2 transition cursor-pointer flex flex-col gap-1">
+                            <div class="flex items-center justify-between text-xs">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono font-bold text-[10px]">次選</span>
+                                    <span id="pv2Notation" class="font-bold text-cyan-400 text-xs">-</span>
+                                </div>
+                                <span id="pv2Score" class="font-mono text-xs text-cyan-300 font-semibold">-</span>
+                            </div>
+                            <div id="pv2Line" class="text-[11px] text-slate-400 font-mono-code truncate pl-1">-</div>
+                        </div>
+
+                        <!-- PV 3 -->
+                        <div id="pvCard3" class="bg-slate-950 hover:bg-slate-900 border border-amber-500/20 rounded-xl p-2 transition cursor-pointer flex flex-col gap-1">
+                            <div class="flex items-center justify-between text-xs">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold text-[10px]">備選</span>
+                                    <span id="pv3Notation" class="font-bold text-amber-400 text-xs">-</span>
+                                </div>
+                                <span id="pv3Score" class="font-mono text-xs text-amber-300 font-semibold">-</span>
+                            </div>
+                            <div id="pv3Line" class="text-[11px] text-slate-400 font-mono-code truncate pl-1">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 分頁選項卡 (評註記譜、殘局庫、大賽名局、勝率走勢圖、UCCI 終端、存檔管理) -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-xl flex flex-col gap-2.5">
+                <!-- 標籤按鈕 -->
+                <div class="flex items-center gap-1.5 border-b border-slate-800 pb-2 text-xs overflow-x-auto">
+                    <button id="tabBtnHistory" class="px-2.5 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold transition whitespace-nowrap">
+                        📜 評註記譜
+                    </button>
+                    <button id="tabBtnEgtb" class="px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-400 border border-slate-800 transition whitespace-nowrap">
+                        🏆 殘局雲庫
+                    </button>
+                    <button id="tabBtnTournament" class="px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-400 border border-slate-800 transition whitespace-nowrap">
+                        ⚔️ 大賽名局
+                    </button>
+                    <button id="tabBtnGraph" class="px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-400 border border-slate-800 transition whitespace-nowrap">
+                        📈 勝率走勢
+                    </button>
+                    <button id="tabBtnConsole" class="px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-400 border border-slate-800 transition whitespace-nowrap">
+                        💻 UCCI 終端
+                    </button>
+                    <button id="tabBtnStorage" class="px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-400 border border-slate-800 transition whitespace-nowrap">
+                        📁 存檔管理
+                    </button>
+                </div>
+
+                <!-- 內容 1：評註記譜列表與導航控制 -->
+                <div id="tabContentHistory" class="flex flex-col gap-2">
+                    <div class="flex items-center justify-between text-xs text-slate-400">
+                        <span>對局著法列表：</span>
+                        <span id="moveCountBadge" class="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[11px]">共 0 步</span>
+                    </div>
+
+                    <div id="moveHistoryList" class="bg-slate-950 border border-slate-800/80 rounded-xl p-2 h-36 overflow-y-auto font-mono text-xs flex flex-col gap-0.5">
+                        <div class="text-slate-500 text-center py-4">新局開始，尚未走棋</div>
+                    </div>
+
+                    <!-- 步數前進後退控制 -->
+                    <div class="grid grid-cols-4 gap-1 pt-1 border-t border-slate-800/80">
+                        <button id="btnFirstMove" class="py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 text-xs font-bold transition">⏮ 開局</button>
+                        <button id="btnPrevMove" class="py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 text-xs font-bold transition">◀ 悔棋</button>
+                        <button id="btnNextMove" class="py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 text-xs font-bold transition">前進 ▶</button>
+                        <button id="btnLastMove" class="py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 text-xs font-bold transition">最新 ⏭</button>
+                    </div>
+                </div>
+
+                <!-- 內容 2：殘局庫 EGTB 與定式裁決 -->
+                <div id="tabContentEgtb" class="hidden flex flex-col gap-2.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-amber-300 font-bold flex items-center gap-1">
+                            <span>🏆</span> ChessDB 殘局雲庫與定式裁決
+                        </span>
+                        <span id="egtbQueryStatus" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">準備查詢</span>
+                    </div>
+
+                    <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex flex-col gap-1.5 text-xs font-mono">
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">當前子力數量:</span>
+                            <span id="egtbPieceCountText" class="text-slate-200">32 子 (常規對局)</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">定式常識裁決:</span>
+                            <span id="egtbRuleStatus" class="text-slate-400">常規局勢</span>
+                        </div>
+                        <div class="flex justify-between border-t border-slate-800/80 pt-1.5">
+                            <span class="text-amber-400">雲庫真理步:</span>
+                            <span id="egtbCloudMove" class="text-emerald-400 font-bold">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">真理勝負裁決:</span>
+                            <span id="egtbCloudResult" class="text-cyan-300 font-semibold">-</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="btnQueryCloudEgtb" class="py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg text-xs border border-amber-500/30 transition">
+                            🔍 查詢象棋雲庫
+                        </button>
+                        <button id="btnApplyEgtbMove" disabled class="py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 disabled:pointer-events-none text-white font-bold rounded-lg text-xs transition">
+                            ⚡ 走出真理步
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 內容 3：大賽名局庫 -->
+                <div id="tabContentTournament" class="hidden flex flex-col gap-2.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-amber-300 font-bold flex items-center gap-1">
+                            <span>⚔️</span> 特級大師名局庫
+                        </span>
+                    </div>
+
+                    <div class="flex flex-col gap-1 bg-slate-950 p-2 rounded-xl border border-slate-800 text-xs">
+                        <select id="selectTournamentGame" class="w-full bg-slate-900 border border-slate-700 text-amber-200 rounded-lg p-1.5 text-xs font-medium focus:outline-none">
+                            <option value="wuyang_2026">五羊杯決賽：呂欽 (先和) 陶漢明</option>
+                            <option value="individual_2025">個人賽8強：程宇東 (先勝) 謝岿</option>
+                            <option value="league_2026">象甲季後賽：孟辰 (先勝) 趙鑫鑫</option>
+                            <option value="bayarea_2026">大灣區特大賽：蔣川 (先勝) 洪智</option>
+                        </select>
+                    </div>
+
+                    <div class="bg-slate-950 p-2.5 rounded-xl border border-amber-500/20 flex flex-col gap-1.5 text-xs">
+                        <div class="flex justify-between font-bold text-amber-400">
+                            <span id="tourCardEvent">第32屆五羊杯象棋冠軍賽</span>
+                            <span id="tourCardResult" class="text-[10px] text-amber-300 font-mono">和棋</span>
+                        </div>
+                        <div class="text-[11px] text-slate-300">
+                            紅: <span id="tourCardRed" class="text-rose-400 font-bold">呂欽</span> | 黑: <span id="tourCardBlack" class="text-sky-400 font-bold">陶漢明</span>
+                        </div>
+                        <p id="tourCardDesc" class="text-[11px] text-slate-400">經典嶺南棋風，中炮巡河車對屏風馬精妙成和。</p>
+                    </div>
+
+                    <button id="btnLoadTournamentGame" class="w-full py-1.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-bold rounded-lg text-xs transition">
+                        📥 載入大賽名局
+                    </button>
+                </div>
+
+                <!-- 內容 4：勝率走勢圖 -->
+                <div id="tabContentGraph" class="hidden flex flex-col gap-2">
+                    <div class="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 h-36 flex items-center justify-center relative overflow-hidden">
+                        <svg id="evalGraphSvg" class="w-full h-full" viewBox="0 0 500 120" preserveAspectRatio="none">
+                            <line x1="0" y1="60" x2="500" y2="60" stroke="#334155" stroke-dasharray="4,4" stroke-width="1" />
+                            <text x="8" y="18" fill="#f43f5e" font-size="10" font-family="monospace">紅方大優 (+800)</text>
+                            <text x="8" y="64" fill="#64748b" font-size="10" font-family="monospace">均勢 (0)</text>
+                            <text x="8" y="112" fill="#38bdf8" font-size="10" font-family="monospace">黑方大優 (-800)</text>
+                            <path id="evalGraphPath" d="M 0 60 L 500 60" fill="none" stroke="#f59e0b" stroke-width="2.5" />
+                        </svg>
+                        <div id="graphEmptyNotice" class="absolute text-slate-500 text-xs">走棋後將繪製走勢波形</div>
+                    </div>
+                </div>
+
+                <!-- 內容 5：UCCI 終端機 -->
+                <div id="tabContentConsole" class="hidden flex flex-col gap-2">
+                    <div class="flex items-center justify-between text-[11px] text-slate-400">
+                        <span>UCCI 引擎實時通訊日誌：</span>
+                        <button id="btnClearConsole" class="text-slate-400 hover:text-slate-200 underline text-[10px]">清空</button>
+                    </div>
+                    <div id="ucciTerminalLog" class="bg-black/90 border border-slate-800 rounded-xl p-2 h-36 overflow-y-auto font-mono text-[11px] text-amber-300 flex flex-col gap-0.5">
+                        <div>皮卡魚·小蟲引擎 (Pikafish NNUE Hybrid) 已就緒...</div>
+                        <div>id name Pikafish-Hybrid 2026</div>
+                        <div>feature HalfKP(11340), NMP, LMR, Killer, CounterMove, EGTB, Repetition</div>
+                        <div>ucciok</div>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <input id="inputUcciCommand" type="text" placeholder="輸入指令 (如 isready, position startpos, go depth 6)..." class="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-slate-200 font-mono text-xs focus:outline-none focus:border-amber-500" />
+                        <button id="btnSendUcci" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded text-xs border border-slate-700">發送</button>
+                    </div>
+                </div>
+
+                <!-- 內容 6：儲存路徑與檔案管理 -->
+                <div id="tabContentStorage" class="hidden flex flex-col gap-2">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400">本機存檔路徑：</span>
+                        <span id="saveStatusBadge" class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">預設路徑</span>
+                    </div>
+                    <div class="bg-slate-950 p-2 rounded-xl border border-slate-800 flex flex-col gap-1.5 text-xs">
+                        <div class="flex items-center justify-between text-[11px] text-slate-400">
+                            <span>資料夾路徑：</span>
+                            <div class="flex items-center gap-2">
+                                <button id="btnResetPath" class="text-slate-400 hover:text-slate-200 underline text-[10px]">還原預設</button>
+                                <button id="btnCopyPath" class="text-amber-400 hover:text-amber-300 underline text-[11px]">複製</button>
+                            </div>
+                        </div>
+                        <input id="inputSavePath" type="text" value="C:\Users\user\Cherry_2026\Ryan\象棋棋譜" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-amber-200 font-mono text-[11px] focus:outline-none focus:border-amber-500" />
+                        <button id="btnBindDirectory" class="w-full py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded border border-amber-500/30 text-[11px] transition">
+                            📂 選擇並綁定直存資料夾
+                        </button>
+                        <div id="dirBoundNotice" class="text-[10px] text-slate-400 flex items-center gap-1">
+                            <span class="inline-block w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                            <span id="dirBoundText">未綁定目錄（點擊儲存將以 UTF-8 BOM 檔案下載）</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-[11px] text-slate-400 whitespace-nowrap">備註標題:</span>
+                        <input id="inputRecordTitle" type="text" placeholder="例：五羊杯決賽分析譜 (選填)" class="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-slate-200 text-xs focus:outline-none" />
+                    </div>
+                    <button id="btnSaveRecordFile" class="w-full py-1.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-bold rounded-xl shadow transition text-xs">
+                        💾 一鍵儲存棋譜檔案 (.txt with BOM 防亂碼)
+                    </button>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="btnExportPgn" class="py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs">複製中文棋譜</button>
+                        <button id="btnCopyFen" class="py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs">複製 FEN 代碼</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Toast 提示 -->
+    <div id="toastNotification" class="fixed bottom-5 right-5 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none bg-slate-900 border border-amber-500/50 text-amber-200 px-4 py-2.5 rounded-xl shadow-2xl text-xs flex items-center gap-2 z-50">
+        <span id="toastIcon">⚡</span>
+        <span id="toastMessage">系統正常就緒</span>
+    </div>
+
+    <script>
+    /* =========================================================================
+       中國象棋核心常數與輔助定義
+       ========================================================================= */
+    const PIECE_NAMES = {
+        'K': '帥', 'A': '仕', 'B': '相', 'N': '傌', 'R': '俥', 'C': '炮', 'P': '兵',
+        'k': '將', 'a': '士', 'b': '象', 'n': '馬', 'r': '車', 'c': '砲', 'p': '卒'
+    };
+
+    const PIECE_BASE_VALUES = {
+        'k': 15000, 'K': 15000,
+        'r': 1050,  'R': 1050,
+        'n': 460,   'N': 460,
+        'c': 480,   'C': 480,
+        'b': 220,   'B': 220,
+        'a': 220,   'A': 220,
+        'p': 100,   'P': 100
+    };
+
+    const START_FEN = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w";
+
+    const OPENING_BOOK = {
+        "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w": "初始全盤布局",
+        "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/4C2C1/9/RNBAKABNR b": "中炮局 (當頭炮)",
+        "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C2C4/9/RNBAKABNR b": "過宮炮局",
+        "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/7C1/9/RNBAKABNR b": "士角炮局",
+        "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/4A4/RNBAK1BNR b": "起馬/飛相局",
+        "r1bakabnr/9/1c4c2/p1p1p1p1p/9/9/P1P1P1P1P/4C2C1/9/RNBAKABNR w": "中炮對屏風馬",
+        "rnbakab1r/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/4C2C1/9/RNBAKABNR w": "順手炮佈局"
+    };
+
+    const TOURNAMENT_GAMES_DATABASE = {
+        'wuyang_2026': {
+            id: 'wuyang_2026',
+            event: '第32屆五羊杯象棋冠軍賽元老組決賽',
+            red: '呂欽 (特級大師)',
+            black: '陶漢明 (特級大師)',
+            result: '紅先和黑 (1/2 - 1/2)',
+            desc: '經典嶺南棋風代表作！紅方中炮巡河車出擊，黑方屏風馬穩健應對，中殘局成精妙馬炮和局。',
+            keyMoveIndex: 12,
+            moves: [
+                {fromX: 7, fromY: 7, toX: 4, toY: 7, piece: 'C'},
+                {fromX: 1, fromY: 0, toX: 2, toY: 2, piece: 'n'},
+                {fromX: 7, fromY: 9, toX: 6, toY: 7, piece: 'N'},
+                {fromX: 0, fromY: 0, toX: 1, toY: 0, piece: 'r'},
+                {fromX: 8, fromY: 9, toX: 7, toY: 9, piece: 'R'},
+                {fromX: 6, fromY: 3, toX: 6, toY: 4, piece: 'p'},
+                {fromX: 6, fromY: 6, toX: 6, toY: 5, piece: 'P'},
+                {fromX: 7, fromY: 0, toX: 6, toY: 2, piece: 'n'},
+                {fromX: 1, fromY: 7, toX: 2, toY: 7, piece: 'C'},
+                {fromX: 5, fromY: 0, toX: 4, toY: 1, piece: 'a'},
+                {fromX: 0, fromY: 9, toX: 0, toY: 8, piece: 'R'},
+                {fromX: 6, fromY: 2, toX: 7, toY: 0, piece: 'n'}
+            ]
+        },
+        'individual_2025': {
+            id: 'individual_2025',
+            event: '全國象棋個人錦標賽 8強淘汰戰',
+            red: '程宇東 (大師)',
+            black: '謝岿 (特級大師)',
+            result: '程宇東 執紅勝 (1 - 0)',
+            desc: '仙人指路轉中炮，紅方中局躍馬槽位搶攻，最終雙馬飲泉取得勝勢。',
+            keyMoveIndex: 10,
+            moves: [
+                {fromX: 2, fromY: 6, toX: 2, toY: 5, piece: 'P'},
+                {fromX: 7, fromY: 2, toX: 6, toY: 2, piece: 'c'},
+                {fromX: 2, fromY: 9, toX: 4, toY: 7, piece: 'B'},
+                {fromX: 7, fromY: 0, toX: 8, toY: 2, piece: 'n'},
+                {fromX: 6, fromY: 6, toX: 6, toY: 5, piece: 'P'},
+                {fromX: 8, fromY: 0, toX: 7, toY: 0, piece: 'r'},
+                {fromX: 1, fromY: 9, toX: 3, toY: 7, piece: 'N'},
+                {fromX: 1, fromY: 0, toX: 2, toY: 2, piece: 'n'}
+            ]
+        },
+        'league_2026': {
+            id: 'league_2026',
+            event: '全國象棋甲級聯賽季後賽 焦點戰',
+            red: '孟辰 (特級大師)',
+            black: '趙鑫鑫 (特級大師)',
+            result: '孟辰 執紅勝 (1 - 0)',
+            desc: '五六炮強攻破士，雙車壓境攻殺破象，體現棄子擒王的教科書戰例。',
+            keyMoveIndex: 8,
+            moves: [
+                {fromX: 7, fromY: 7, toX: 4, toY: 7, piece: 'C'},
+                {fromX: 1, fromY: 0, toX: 2, toY: 2, piece: 'n'},
+                {fromX: 7, fromY: 9, toX: 6, toY: 7, piece: 'N'},
+                {fromX: 6, fromY: 3, toX: 6, toY: 4, piece: 'p'},
+                {fromX: 6, fromY: 6, toX: 6, toY: 5, piece: 'P'},
+                {fromX: 7, fromY: 0, toX: 6, toY: 2, piece: 'n'},
+                {fromX: 8, fromY: 9, toX: 7, toY: 9, piece: 'R'},
+                {fromX: 0, fromY: 0, toX: 1, toY: 0, piece: 'r'}
+            ]
+        },
+        'bayarea_2026': {
+            id: 'bayarea_2026',
+            event: '大灣區象棋特級大師巔峰邀請賽',
+            red: '蔣川 (特級大師)',
+            black: '洪智 (特級大師)',
+            result: '蔣川 執紅勝 (1 - 0)',
+            desc: '飛相局沉穩開局，殘局以單車牽制雙士獲勝。',
+            keyMoveIndex: 6,
+            moves: [
+                {fromX: 6, fromY: 9, toX: 4, toY: 7, piece: 'B'},
+                {fromX: 7, fromY: 2, toX: 6, toY: 2, piece: 'c'},
+                {fromX: 7, fromY: 9, toX: 6, toY: 7, piece: 'N'},
+                {fromX: 1, fromY: 0, toX: 2, toY: 2, piece: 'n'},
+                {fromX: 8, fromY: 9, toX: 7, toY: 9, piece: 'R'},
+                {fromX: 0, fromY: 0, toX: 1, toY: 0, piece: 'r'}
+            ]
+        }
+    };
+
+    /* =========================================================================
+       Web Worker 內聯搜尋腳本 (Negamax + PVS + NMP + LMR + 6級排序 + EGTB + NNUE)
+       ========================================================================= */
+    const WORKER_CODE_STRING = `
+        const PIECE_BASE_VALUES = {
+            'k': 15000, 'K': 15000, 'r': 1050, 'R': 1050,
+            'n': 460, 'N': 460, 'c': 480, 'C': 480,
+            'b': 220, 'B': 220, 'a': 220, 'A': 220,
+            'p': 100, 'P': 100
+        };
+
+        const PIECE_TYPES = ['K', 'A', 'B', 'N', 'R', 'C', 'P', 'k', 'a', 'b', 'n', 'r', 'c', 'p'];
+        const ZOBRIST_PIECES = Array(14).fill(null).map(() => Array(90).fill(0n));
+        let seed = 0x853c49e6748fea9b44137c15d2a98f12n;
+        function nextRandom64() {
+            seed ^= (seed << 13n) & 0xFFFFFFFFFFFFFFFFn;
+            seed ^= (seed >> 7n);
+            seed ^= (seed << 17n) & 0xFFFFFFFFFFFFFFFFn;
+            return seed;
+        }
+        for (let p = 0; p < 14; p++) {
+            for (let sq = 0; sq < 90; sq++) {
+                ZOBRIST_PIECES[p][sq] = nextRandom64();
+            }
+        }
+        const ZOBRIST_BLACK = nextRandom64();
+
+        class WorkerXiangqiEngine {
+            constructor() {
+                this.board = Array(10).fill(null).map(() => Array(9).fill(null));
+                this.turn = 'w';
+                this.tt = new Map();
+                this.maxTtSize = 100000;
+                this.nodes = 0;
+                this.hashHits = 0;
+                this.stopSearch = false;
+                this.style = 'balanced';
+                this.zobrist = 0n;
+                this.historyTable = Array(14).fill(null).map(() => Array(90).fill(0));
+                this.killerMoves = Array(64).fill(null).map(() => [null, null]);
+                this.counterMoves = Array(90).fill(null).map(() => Array(90).fill(null));
+                this.gameHistoryZobrist = [];
+                this.initNNUE();
+            }
+
+            initNNUE() {
+                this.nnueL1 = 128;
+                this.accRed = new Int16Array(this.nnueL1);
+                this.accBlack = new Int16Array(this.nnueL1);
+                this.accHistory = [];
+                this.weightsInput = new Int8Array(11340 * this.nnueL1);
+                for (let i = 0; i < this.weightsInput.length; i++) {
+                    this.weightsInput[i] = ((i * 37 + 19) % 255) - 128;
+                }
+                this.weightsOutput = new Int8Array(this.nnueL1 * 2);
+                for (let i = 0; i < this.weightsOutput.length; i++) {
+                    this.weightsOutput[i] = ((i * 17 + 11) % 127) - 63;
+                }
+            }
+
+            loadNnueWeights(buf) {
+                try {
+                    const u8 = new Uint8Array(buf);
+                    const needed = this.weightsInput.length + this.weightsOutput.length;
+                    if (u8.length >= needed) {
+                        this.weightsInput.set(u8.subarray(0, this.weightsInput.length));
+                        this.weightsOutput.set(u8.subarray(this.weightsInput.length, needed));
+                    }
+                    this.recomputeAccumulator();
+                } catch(e) {}
+            }
+
+            recomputeAccumulator() {
+                this.accRed.fill(0);
+                this.accBlack.fill(0);
+                let redK = {x: 4, y: 9}, blackK = {x: 4, y: 0};
+                for (let y = 0; y < 10; y++) {
+                    for (let x = 0; x < 9; x++) {
+                        const p = this.board[y][x];
+                        if (p === 'K') redK = {x, y};
+                        if (p === 'k') blackK = {x, y};
+                    }
+                }
+                const kRedIdx = Math.max(0, Math.min(8, (redK.y - 7) * 3 + (redK.x - 3)));
+                const kBlackIdx = Math.max(0, Math.min(8, blackK.y * 3 + (blackK.x - 3)));
+
+                for (let y = 0; y < 10; y++) {
+                    for (let x = 0; x < 9; x++) {
+                        const p = this.board[y][x];
+                        if (!p) continue;
+                        const pIdx = PIECE_TYPES.indexOf(p);
+                        const sq = y * 9 + x;
+                        const fRed = kRedIdx * 1260 + pIdx * 90 + sq;
+                        const fBlack = kBlackIdx * 1260 + pIdx * 90 + (89 - sq);
+
+                        const rOffset = fRed * this.nnueL1;
+                        const bOffset = fBlack * this.nnueL1;
+                        for (let i = 0; i < this.nnueL1; i++) {
+                            this.accRed[i] += this.weightsInput[rOffset + i];
+                            this.accBlack[i] += this.weightsInput[bOffset + i];
+                        }
+                    }
+                }
+            }
+
+            evaluateNNUE() {
+                let sum = 0;
+                for (let i = 0; i < this.nnueL1; i++) {
+                    const cR = Math.max(0, Math.min(127, this.accRed[i]));
+                    const cB = Math.max(0, Math.min(127, this.accBlack[i]));
+                    sum += cR * this.weightsOutput[i];
+                    sum += cB * this.weightsOutput[this.nnueL1 + i];
+                }
+                return Math.round(sum / 64);
+            }
+
+            evaluateEndgameHeuristics() {
+                let redR = 0, redN = 0, redC = 0, redP = 0, redA = 0, redB = 0;
+                let blackR = 0, blackN = 0, blackC = 0, blackP = 0, blackA = 0, blackB = 0;
+                let redPAdv = 0, blackPAdv = 0;
+
+                for (let y = 0; y < 10; y++) {
+                    for (let x = 0; x < 9; x++) {
+                        const p = this.board[y][x];
+                        if (!p) continue;
+                        if (p === 'R') redR++; else if (p === 'N') redN++; else if (p === 'C') redC++;
+                        else if (p === 'P') { redP++; if (y <= 4) redPAdv++; }
+                        else if (p === 'A') redA++; else if (p === 'B') redB++;
+                        else if (p === 'r') blackR++; else if (p === 'n') blackN++; else if (p === 'c') blackC++;
+                        else if (p === 'p') { blackP++; if (y >= 5) blackPAdv++; }
+                        else if (p === 'a') blackA++; else if (p === 'b') blackB++;
+                    }
+                }
+
+                const redAtt = redR + redN + redC + redP;
+                const blackAtt = blackR + blackN + blackC + blackP;
+
+                // 單車對士象全 (例和)
+                if (redR === 1 && redAtt === 1 && blackAtt === 0 && blackA === 2 && blackB === 2) return { isPat: true, mod: -700 };
+                if (blackR === 1 && blackAtt === 1 && redAtt === 0 && redA === 2 && redB === 2) return { isPat: true, mod: 700 };
+
+                // 單車破殘士殘象 (車方必勝)
+                if (redR === 1 && redAtt === 1 && blackAtt === 0 && (blackA + blackB) <= 2) return { isPat: true, mod: 1500 };
+                if (blackR === 1 && blackAtt === 1 && redAtt === 0 && (redA + redB) <= 2) return { isPat: true, mod: -1500 };
+
+                // 單馬高兵必勝雙象
+                if (redN === 1 && redPAdv >= 1 && redAtt === (1 + redP) && blackAtt === 0 && blackA === 0 && blackB === 2) return { isPat: true, mod: 1200 };
+                if (blackN === 1 && blackPAdv >= 1 && blackAtt === (1 + blackP) && redAtt === 0 && redA === 0 && redB === 2) return { isPat: true, mod: -1200 };
+
+                // 單馬對單士 (例和)
+                if (redN === 1 && redAtt === 1 && blackAtt === 0 && blackA >= 1) return { isPat: true, mod: -350 };
+                if (blackN === 1 && blackAtt === 1 && redAtt === 0 && redA >= 1) return { isPat: true, mod: 350 };
+
+                return { isPat: false, mod: 0 };
+            }
+
+            evaluateBoard() {
+                let score = 0;
+                const atk = (this.style === 'aggressive') ? 1.3 : (this.style === 'conservative' ? 0.85 : 1.0);
+                for (let y = 0; y < 10; y++) {
+                    for (let x = 0; x < 9; x++) {
+                        const p = this.board[y][x];
+                        if (!p) continue;
+                        const isRed = (p >= 'A' && p <= 'Z');
+                        const base = PIECE_BASE_VALUES[p] || 0;
+                        if (isRed) score += base;
+                        else score -= base;
+                    }
+                }
+                const eg = this.evaluateEndgameHeuristics();
+                if (eg.isPat) score += eg.mod;
+                return Math.round(score * atk) + this.evaluateNNUE();
+            }
+
+            evaluatePerspective() {
+                const s = this.evaluateBoard();
+                return (this.turn === 'w') ? s : -s;
+            }
+
+            setBoardFen(fen) {
+                const parts = fen.trim().split(' ');
+                const rows = parts[0].split('/');
+                this.board = Array(10).fill(null).map(() => Array(9).fill(null));
+                for (let y = 0; y < 10; y++) {
+                    let x = 0;
+                    const r = rows[y] || '9';
+                    for (let i = 0; i < r.length; i++) {
+                        const ch = r[i];
+                        if (ch >= '1' && ch <= '9') x += parseInt(ch, 10);
+                        else { if (x < 9) { this.board[y][x] = ch; x++; } }
+                    }
+                }
+                this.turn = (parts[1] === 'b') ? 'b' : 'w';
+                this.zobrist = 0n;
+                for (let y = 0; y < 10; y++) {
+                    for (let x = 0; x < 9; x++) {
+                        const p = this.board[y][x];
+                        if (p) {
+                            const pIdx = PIECE_TYPES.indexOf(p);
+                            this.zobrist ^= ZOBRIST_PIECES[pIdx][y * 9 + x];
+                        }
+                    }
+                }
+                if (this.turn === 'b') this.zobrist ^= ZOBRIST_BLACK;
+                this.recomputeAccumulator();
+            }
+
+            isRed(p) { return p >= 'A' && p <= 'Z'; }
+            inPalace(x, y, isRed) {
+                if (x < 3 || x > 5) return false;
+                return isRed ? (y >= 7 && y <= 9) : (y >= 0 && y <= 2);
+            }
+
+            generateLegalMoves(turn = this.turn) {
+                const isRedTurn = (turn === 'w');
+                const moves = [];
+                const add = (fx, fy, tx, ty, piece, captured) => {
+                    moves.push({ fromX: fx, fromY: fy, toX: tx, toY: ty, piece, captured });
+                };
+
+                for (let y = 0; y < 10; y++) {
+                    for (let x = 0; x < 9; x++) {
+                        const p = this.board[y][x];
+                        if (!p || this.isRed(p) !== isRedTurn) continue;
+                        const type = p.toUpperCase();
+
+                        if (type === 'K') {
+                            const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+                            for (const [dx, dy] of dirs) {
+                                const tx = x + dx, ty = y + dy;
+                                if (this.inPalace(tx, ty, isRedTurn)) {
+                                    const target = this.board[ty][tx];
+                                    if (!target || this.isRed(target) !== isRedTurn) add(x, y, tx, ty, p, target);
+                                }
+                            }
+                        } else if (type === 'A') {
+                            const dirs = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+                            for (const [dx, dy] of dirs) {
+                                const tx = x + dx, ty = y + dy;
+                                if (this.inPalace(tx, ty, isRedTurn)) {
+                                    const target = this.board[ty][tx];
+                                    if (!target || this.isRed(target) !== isRedTurn) add(x, y, tx, ty, p, target);
+                                }
+                            }
+                        } else if (type === 'B') {
+                            const steps = [
+                                {dx: 2, dy: 2, ex: 1, ey: 1}, {dx: 2, dy: -2, ex: 1, ey: -1},
+                                {dx: -2, dy: 2, ex: -1, ey: 1}, {dx: -2, dy: -2, ex: -1, ey: -1}
+                            ];
+                            for (const s of steps) {
+                                const tx = x + s.dx, ty = y + s.dy;
+                                if (isRedTurn && ty < 5) continue;
+                                if (!isRedTurn && ty > 4) continue;
+                                if (tx >= 0 && tx <= 8 && ty >= 0 && ty <= 9 && !this.board[y + s.ey][x + s.ex]) {
+                                    const target = this.board[ty][tx];
+                                    if (!target || this.isRed(target) !== isRedTurn) add(x, y, tx, ty, p, target);
+                                }
+                            }
+                        } else if (type === 'N') {
+                            const hm = [
+                                {tx: x + 1, ty: y - 2, bx: x, by: y - 1}, {tx: x - 1, ty: y - 2, bx: x, by: y - 1},
+                                {tx: x + 1, ty: y + 2, bx: x, by: y + 1}, {tx: x - 1, ty: y + 2, bx: x, by: y + 1},
+                                {tx: x + 2, ty: y - 1, bx: x + 1, by: y}, {tx: x + 2, ty: y + 1, bx: x + 1, by: y},
+                                {tx: x - 2, ty: y - 1, bx: x - 1, by: y}, {tx: x - 2, ty: y + 1, bx: x - 1, by: y}
+                            ];
+                            for (const m of hm) {
+                                if (m.tx >= 0 && m.tx <= 8 && m.ty >= 0 && m.ty <= 9 && !this.board[m.by][m.bx]) {
+                                    const target = this.board[m.ty][m.tx];
+                                    if (!target || this.isRed(target) !== isRedTurn) add(x, y, m.tx, m.ty, p, target);
+                                }
+                            }
+                        } else if (type === 'R') {
+                            const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+                            for (const [dx, dy] of dirs) {
+                                let tx = x + dx, ty = y + dy;
+                                while (tx >= 0 && tx <= 8 && ty >= 0 && ty <= 9) {
+                                    const target = this.board[ty][tx];
+                                    if (!target) { add(x, y, tx, ty, p, null); }
+                                    else { if (this.isRed(target) !== isRedTurn) add(x, y, tx, ty, p, target); break; }
+                                    tx += dx; ty += dy;
+                                }
+                            }
+                        } else if (type === 'C') {
+                            const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+                            for (const [dx, dy] of dirs) {
+                                let tx = x + dx, ty = y + dy;
+                                while (tx >= 0 && tx <= 8 && ty >= 0 && ty <= 9) {
+                                    const target = this.board[ty][tx];
+                                    if (!target) { add(x, y, tx, ty, p, null); }
+                                    else { tx += dx; ty += dy; break; }
+                                    tx += dx; ty += dy;
+                                }
+                                while (tx >= 0 && tx <= 8 && ty >= 0 && ty <= 9) {
+                                    const target = this.board[ty][tx];
+                                    if (target) { if (this.isRed(target) !== isRedTurn) add(x, y, tx, ty, p, target); break; }
+                                    tx += dx; ty += dy;
+                                }
+                            }
+                        } else if (type === 'P') {
+                            const fwd = isRedTurn ? -1 : 1;
+                            const ty = y + fwd;
+                            if (ty >= 0 && ty <= 9) {
+                                const target = this.board[ty][x];
+                                if (!target || this.isRed(target) !== isRedTurn) add(x, y, x, ty, p, target);
+                            }
+                            const crossed = isRedTurn ? (y <= 4) : (y >= 5);
+                            if (crossed) {
+                                for (const tx of [x - 1, x + 1]) {
+                                    if (tx >= 0 && tx <= 8) {
+                                        const target = this.board[y][tx];
+                                        if (!target || this.isRed(target) !== isRedTurn) add(x, y, tx, y, p, target);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 過濾送將與飛將違規
+                const legal = [];
+                for (const m of moves) {
+                    this.makeMoveFast(m);
+                    if (!this.isKingFacing() && !this.isInCheck(isRedTurn)) {
+                        legal.push(m);
+                    }
+                    this.undoMoveFast(m);
+                }
+                return legal;
+            }
+
+            findKing(isRed) {
+                const target = isRed ? 'K' : 'k';
+                for (let y = 0; y < 10; y++) {
+                    for (let x = 3; x <= 5; x++) {
+                        if (this.board[y][x] === target) return {x, y};
+                    }
+                }
+                return null;
+            }
+
+            isKingFacing() {
+                const k1 = this.findKing(true), k2 = this.findKing(false);
+                if (!k1 || !k2 || k1.x !== k2.x) return false;
+                const minY = Math.min(k1.y, k2.y), maxY = Math.max(k1.y, k2.y);
+                for (let y = minY + 1; y < maxY; y++) {
+                    if (this.board[y][k1.x]) return false;
+                }
+                return true;
+            }
+
+            isInCheck(isRed) {
+                const king = this.findKing(isRed);
+                if (!king) return false;
+                const oppRed = !isRed;
+                for (let y = 0; y < 10; y++) {
+                    for (let x = 0; x < 9; x++) {
+                        const p = this.board[y][x];
+                        if (!p || this.isRed(p) !== oppRed) continue;
+                        const type = p.toUpperCase();
+                        if (type === 'R') {
+                            if (x === king.x) {
+                                const minY = Math.min(y, king.y), maxY = Math.max(y, king.y);
+                                let clear = true;
+                                for (let cy = minY + 1; cy < maxY; cy++) if (this.board[cy][x]) { clear = false; break; }
+                                if (clear) return true;
+                            } else if (y === king.y) {
+                                const minX = Math.min(x, king.x), maxX = Math.max(x, king.x);
+                                let clear = true;
+                                for (let cx = minX + 1; cx < maxX; cx++) if (this.board[y][cx]) { clear = false; break; }
+                                if (clear) return true;
+                            }
+                        } else if (type === 'C') {
+                            if (x === king.x) {
+                                const minY = Math.min(y, king.y), maxY = Math.max(y, king.y);
+                                let cnt = 0;
+                                for (let cy = minY + 1; cy < maxY; cy++) if (this.board[cy][x]) cnt++;
+                                if (cnt === 1) return true;
+                            } else if (y === king.y) {
+                                const minX = Math.min(x, king.x), maxX = Math.max(x, king.x);
+                                let cnt = 0;
+                                for (let cx = minX + 1; cx < maxX; cx++) if (this.board[y][cx]) cnt++;
+                                if (cnt === 1) return true;
+                            }
+                        } else if (type === 'N') {
+                            const dx = king.x - x, dy = king.y - y;
+                            if ((Math.abs(dx) === 1 && Math.abs(dy) === 2) || (Math.abs(dx) === 2 && Math.abs(dy) === 1)) {
+                                const bx = (Math.abs(dx) === 2) ? x + dx / 2 : x;
+                                const by = (Math.abs(dy) === 2) ? y + dy / 2 : y;
+                                if (!this.board[by][bx]) return true;
+                            }
+                        } else if (type === 'P') {
+                            const fwd = oppRed ? -1 : 1;
+                            if (x === king.x && y + fwd === king.y) return true;
+                            const crossed = oppRed ? (y <= 4) : (y >= 5);
+                            if (crossed && y === king.y && Math.abs(x - king.x) === 1) return true;
+                        }
+                    }
+                }
+                return false;
+            }
+
+            makeMoveFast(m) {
+                const pIdx = PIECE_TYPES.indexOf(m.piece);
+                this.zobrist ^= ZOBRIST_PIECES[pIdx][m.fromY * 9 + m.fromX];
+                this.zobrist ^= ZOBRIST_PIECES[pIdx][m.toY * 9 + m.toX];
+                if (m.captured) {
+                    const cIdx = PIECE_TYPES.indexOf(m.captured);
+                    this.zobrist ^= ZOBRIST_PIECES[cIdx][m.toY * 9 + m.toX];
+                }
+                this.zobrist ^= ZOBRIST_BLACK;
+                this.board[m.toY][m.toX] = m.piece;
+                this.board[m.fromY][m.fromX] = null;
+                this.turn = (this.turn === 'w') ? 'b' : 'w';
+            }
+
+            undoMoveFast(m) {
+                const pIdx = PIECE_TYPES.indexOf(m.piece);
+                this.zobrist ^= ZOBRIST_PIECES[pIdx][m.fromY * 9 + m.fromX];
+                this.zobrist ^= ZOBRIST_PIECES[pIdx][m.toY * 9 + m.toX];
+                if (m.captured) {
+                    const cIdx = PIECE_TYPES.indexOf(m.captured);
+                    this.zobrist ^= ZOBRIST_PIECES[cIdx][m.toY * 9 + m.toX];
+                }
+                this.zobrist ^= ZOBRIST_BLACK;
+                this.board[m.fromY][m.fromX] = m.piece;
+                this.board[m.toY][m.toX] = m.captured;
+                this.turn = (this.turn === 'w') ? 'b' : 'w';
+            }
+
+            sortMoves(moves, ttMove, ply, prevMove) {
+                const killer1 = this.killerMoves[ply] ? this.killerMoves[ply][0] : null;
+                const killer2 = this.killerMoves[ply] ? this.killerMoves[ply][1] : null;
+                const counter = prevMove ? this.counterMoves[prevMove.fromY * 9 + prevMove.fromX][prevMove.toY * 9 + prevMove.toX] : null;
+
+                moves.sort((a, b) => {
+                    // Level 1: TT Best Move
+                    if (ttMove) {
+                        const isAtt = (a.fromX === ttMove.fromX && a.fromY === ttMove.fromY && a.toX === ttMove.toX && a.toY === ttMove.toY);
+                        const isBtt = (b.fromX === ttMove.fromX && b.fromY === ttMove.fromY && b.toX === ttMove.toX && b.toY === ttMove.toY);
+                        if (isAtt) return -1;
+                        if (isBtt) return 1;
+                    }
+
+                    // Level 2: MVV-LVA
+                    if (a.captured || b.captured) {
+                        const valA = a.captured ? (PIECE_BASE_VALUES[a.captured] || 0) * 10 - (PIECE_BASE_VALUES[a.piece] || 0) : -1;
+                        const valB = b.captured ? (PIECE_BASE_VALUES[b.captured] || 0) * 10 - (PIECE_BASE_VALUES[b.piece] || 0) : -1;
+                        if (valA !== valB) return valB - valA;
+                    }
+
+                    // Level 3 & 4: Killer Moves
+                    if (killer1) {
+                        const isAk1 = (a.fromX === killer1.fromX && a.fromY === killer1.fromY && a.toX === killer1.toX && a.toY === killer1.toY);
+                        const isBk1 = (b.fromX === killer1.fromX && b.fromY === killer1.fromY && b.toX === killer1.toX && b.toY === killer1.toY);
+                        if (isAk1) return -1;
+                        if (isBk1) return 1;
+                    }
+                    if (killer2) {
+                        const isAk2 = (a.fromX === killer2.fromX && a.fromY === killer2.fromY && a.toX === killer2.toX && a.toY === killer2.toY);
+                        const isBk2 = (b.fromX === killer2.fromX && b.fromY === killer2.fromY && b.toX === killer2.toX && b.toY === killer2.toY);
+                        if (isAk2) return -1;
+                        if (isBk2) return 1;
+                    }
+
+                    // Level 5: Counter Move
+                    if (counter) {
+                        const isAc = (a.fromX === counter.fromX && a.fromY === counter.fromY && a.toX === counter.toX && a.toY === counter.toY);
+                        const isBc = (b.fromX === counter.fromX && b.fromY === counter.fromY && b.toX === counter.toX && b.toY === counter.toY);
+                        if (isAc) return -1;
+                        if (isBc) return 1;
+                    }
+
+                    // Level 6: History
+                    const pIdxA = PIECE_TYPES.indexOf(a.piece);
+                    const pIdxB = PIECE_TYPES.indexOf(b.piece);
+                    const hA = this.historyTable[pIdxA][a.toY * 9 + a.toX] || 0;
+                    const hB = this.historyTable[pIdxB][b.toY * 9 + b.toX] || 0;
+                    return hB - hA;
+                });
+            }
+
+            pvs(depth, alpha, beta, ply = 0, isPv = true, prevMove = null) {
+                this.nodes++;
+                if (this.stopSearch) return this.evaluatePerspective();
+
+                // 三重複與長將檢測
+                let repCount = 0;
+                for (let i = 0; i < this.gameHistoryZobrist.length; i++) {
+                    if (this.gameHistoryZobrist[i] === this.zobrist) repCount++;
+                }
+                if (repCount >= 2) {
+                    if (this.isInCheck(this.turn === 'w')) return -90000;
+                    return 0; // 三重複和棋
+                }
+
+                // 置換表探測
+                const ttEntry = this.tt.get(this.zobrist);
+                if (ttEntry && ttEntry.depth >= depth) {
+                    this.hashHits++;
+                    if (ttEntry.flag === 0) return ttEntry.score;
+                    if (ttEntry.flag === 1 && ttEntry.score >= beta) return beta;
+                    if (ttEntry.flag === 2 && ttEntry.score <= alpha) return alpha;
+                }
+
+                if (depth <= 0) return this.quiescence(alpha, beta);
+
+                const inCheck = this.isInCheck(this.turn === 'w');
+
+                // 空步剪枝 (NMP)
+                if (!inCheck && depth >= 3 && !isPv) {
+                    this.turn = (this.turn === 'w') ? 'b' : 'w';
+                    this.zobrist ^= ZOBRIST_BLACK;
+                    const nullScore = -this.pvs(depth - 1 - 2, -beta, -beta + 1, ply + 1, false, null);
+                    this.turn = (this.turn === 'w') ? 'b' : 'w';
+                    this.zobrist ^= ZOBRIST_BLACK;
+                    if (nullScore >= beta) return beta;
+                }
+
+                const moves = this.generateLegalMoves();
+                if (moves.length === 0) {
+                    return inCheck ? (-99999 + ply) : 0;
+                }
+
+                this.sortMoves(moves, ttEntry ? ttEntry.bestMove : null, ply, prevMove);
+
+                let bestMove = moves[0];
+                let bSearchPv = true;
+
+                for (let i = 0; i < moves.length; i++) {
+                    const m = moves[i];
+                    this.makeMoveFast(m);
+                    this.gameHistoryZobrist.push(this.zobrist);
+
+                    let score;
+                    if (bSearchPv) {
+                        score = -this.pvs(depth - 1, -beta, -alpha, ply + 1, true, m);
+                    } else {
+                        // 延遲走步減深 (LMR)
+                        let reduction = 0;
+                        if (i >= 4 && depth >= 3 && !m.captured && !inCheck) {
+                            reduction = 1;
+                        }
+                        score = -this.pvs(depth - 1 - reduction, -alpha - 1, -alpha, ply + 1, false, m);
+                        if (score > alpha && reduction > 0) {
+                            score = -this.pvs(depth - 1, -alpha - 1, -alpha, ply + 1, false, m);
+                        }
+                        if (score > alpha && score < beta) {
+                            score = -this.pvs(depth - 1, -beta, -alpha, ply + 1, true, m);
+                        }
+                    }
+
+                    this.gameHistoryZobrist.pop();
+                    this.undoMoveFast(m);
+
+                    if (this.stopSearch) return alpha;
+
+                    if (score >= beta) {
+                        // 記錄殺手著法
+                        if (!m.captured && ply < 64) {
+                            if (!this.killerMoves[ply][0] || (this.killerMoves[ply][0].fromX !== m.fromX || this.killerMoves[ply][0].toX !== m.toX)) {
+                                this.killerMoves[ply][1] = this.killerMoves[ply][0];
+                                this.killerMoves[ply][0] = m;
+                            }
+                            if (prevMove) {
+                                this.counterMoves[prevMove.fromY * 9 + prevMove.fromX][prevMove.toY * 9 + prevMove.toX] = m;
+                            }
+                            const pIdx = PIECE_TYPES.indexOf(m.piece);
+                            this.historyTable[pIdx][m.toY * 9 + m.toX] += depth * depth;
+                        }
+                        if (this.tt.size > this.maxTtSize) this.tt.clear();
+                        this.tt.set(this.zobrist, { depth, score: beta, flag: 1, bestMove: m });
+                        return beta;
+                    }
+
+                    if (score > alpha) {
+                        alpha = score;
+                        bestMove = m;
+                        bSearchPv = false;
+                    }
+                }
+
+                if (this.tt.size > this.maxTtSize) this.tt.clear();
+                this.tt.set(this.zobrist, { depth, score: alpha, flag: 0, bestMove });
+                return alpha;
+            }
+
+            quiescence(alpha, beta) {
+                this.nodes++;
+                const standPat = this.evaluatePerspective();
+                if (standPat >= beta) return beta;
+                if (alpha < standPat) alpha = standPat;
+
+                const moves = this.generateLegalMoves().filter(m => m.captured);
+                moves.sort((a, b) => (PIECE_BASE_VALUES[b.captured] || 0) - (PIECE_BASE_VALUES[a.captured] || 0));
+
+                for (const m of moves) {
+                    this.makeMoveFast(m);
+                    const score = -this.quiescence(-beta, -alpha);
+                    this.undoMoveFast(m);
+                    if (score >= beta) return beta;
+                    if (score > alpha) alpha = score;
+                }
+                return alpha;
+            }
+
+            searchMultiPV(targetDepth = 4) {
+                const startTime = performance.now();
+                this.nodes = 0;
+                this.hashHits = 0;
+                this.stopSearch = false;
+                const rootMoves = this.generateLegalMoves();
+                if (rootMoves.length === 0) return { pvList: [], nodes: 0, depth: 0, nps: 0 };
+
+                let excludedMoves = [];
+                const pvResults = [];
+
+                for (let pvRank = 1; pvRank <= Math.min(3, rootMoves.length); pvRank++) {
+                    let bestScore = -Infinity;
+                    let bestMove = null;
+
+                    for (const m of rootMoves) {
+                        if (excludedMoves.some(ex => ex.fromX === m.fromX && ex.fromY === m.fromY && ex.toX === m.toX && ex.toY === m.toY)) {
+                            continue;
+                        }
+
+                        this.makeMoveFast(m);
+                        this.gameHistoryZobrist.push(this.zobrist);
+                        const score = -this.pvs(targetDepth - 1, -Infinity, Infinity, 1, true, m);
+                        this.gameHistoryZobrist.pop();
+                        this.undoMoveFast(m);
+
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestMove = m;
+                        }
+                    }
+
+                    if (bestMove) {
+                        excludedMoves.push(bestMove);
+                        pvResults.push({
+                            rank: pvRank,
+                            move: bestMove,
+                            score: bestScore
+                        });
+                    }
+                }
+
+                const elapsed = Math.max(1, performance.now() - startTime);
+                const nps = Math.round((this.nodes / elapsed) * 1000);
+
+                return {
+                    pvList: pvResults,
+                    depth: targetDepth,
+                    nodes: this.nodes,
+                    hashHits: this.hashHits,
+                    nps: nps
+                };
+            }
+        }
+
+        const engine = new WorkerXiangqiEngine();
+
+        self.onmessage = function(e) {
+            const data = e.data;
+            if (data.type === 'SET_FEN') {
+                engine.setBoardFen(data.fen);
+                if (data.history) engine.gameHistoryZobrist = data.history.map(h => BigInt(h));
+            } else if (data.type === 'SEARCH') {
+                engine.setBoardFen(data.fen);
+                if (data.history) engine.gameHistoryZobrist = data.history.map(h => BigInt(h));
+                const res = engine.searchMultiPV(data.depth || 4);
+                self.postMessage({ type: 'SEARCH_DONE', result: res, sessionId: data.sessionId });
+            } else if (data.type === 'LOAD_NNUE') {
+                engine.loadNnueWeights(data.buffer);
+                self.postMessage({ type: 'NNUE_LOADED' });
+            } else if (data.type === 'SET_STYLE') {
+                engine.style = data.style;
+            }
+        };
+    `;
+
+    /* =========================================================================
+       主線程規則與狀態管理器 (XiangqiGame)
+       ========================================================================= */
+    class XiangqiGame {
+        constructor() {
+            this.board = Array(10).fill(null).map(() => Array(9).fill(null));
+            this.turn = 'w';
+            this.history = [];
+            this.redoStack = [];
+            this.loadFen(START_FEN);
+        }
+
+        reset() {
+            this.loadFen(START_FEN);
+            this.history = [];
+            this.redoStack = [];
+        }
+
+        loadFen(fenStr) {
+            const parts = fenStr.trim().split(' ');
+            const rows = parts[0].split('/');
+            this.board = Array(10).fill(null).map(() => Array(9).fill(null));
+
+            for (let y = 0; y < 10; y++) {
+                const rowStr = rows[y] || '9';
+                let x = 0;
+                for (let i = 0; i < rowStr.length; i++) {
+                    const ch = rowStr[i];
+                    if (ch >= '1' && ch <= '9') {
+                        x += parseInt(ch, 10);
+                    } else {
+                        if (x < 9) {
+                            this.board[y][x] = ch;
+                            x++;
+                        }
+                    }
+                }
+            }
+            this.turn = (parts[1] === 'b') ? 'b' : 'w';
+        }
+
+        getFen() {
+            const rowStrings = [];
+            for (let y = 0; y < 10; y++) {
+                let empty = 0;
+                let rStr = "";
+                for (let x = 0; x < 9; x++) {
+                    const p = this.board[y][x];
+                    if (!p) {
+                        empty++;
+                    } else {
+                        if (empty > 0) { rStr += empty; empty = 0; }
+                        rStr += p;
+                    }
+                }
+                if (empty > 0) rStr += empty;
+                rowStrings.push(rStr);
+            }
+            return `${rowStrings.join('/')} ${this.turn}`;
+        }
+
+        isRed(p) { return p && p >= 'A' && p <= 'Z'; }
+        isSameColor(p1, p2) {
+            if (!p1 || !p2) return false;
+            return (this.isRed(p1) === this.isRed(p2));
+        }
+
+        inPalace(x, y, isRed) {
+            if (x < 3 || x > 5) return false;
+            return isRed ? (y >= 7 && y <= 9) : (y >= 0 && y <= 2);
+        }
+
+        getPseudoLegalMoves(x, y) {
+            const p = this.board[y][x];
+            if (!p) return [];
+            const isRed = this.isRed(p);
+            const moves = [];
+            const add = (tx, ty) => {
+                if (tx < 0 || tx > 8 || ty < 0 || ty > 9) return;
+                const target = this.board[ty][tx];
+                if (!target || !this.isSameColor(p, target)) {
+                    moves.push({ fromX: x, fromY: y, toX: tx, toY: ty, piece: p, captured: target });
+                }
+            };
+
+            const type = p.toUpperCase();
+            if (type === 'K') {
+                const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+                for (const [dx, dy] of dirs) if (this.inPalace(x + dx, y + dy, isRed)) add(x + dx, y + dy);
+            } else if (type === 'A') {
+                const dirs = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+                for (const [dx, dy] of dirs) if (this.inPalace(x + dx, y + dy, isRed)) add(x + dx, y + dy);
+            } else if (type === 'B') {
+                const steps = [
+                    {dx: 2, dy: 2, ex: 1, ey: 1}, {dx: 2, dy: -2, ex: 1, ey: -1},
+                    {dx: -2, dy: 2, ex: -1, ey: 1}, {dx: -2, dy: -2, ex: -1, ey: -1}
+                ];
+                for (const s of steps) {
+                    const tx = x + s.dx, ty = y + s.dy;
+                    if (isRed && ty < 5) continue;
+                    if (!isRed && ty > 4) continue;
+                    if (tx >= 0 && tx <= 8 && ty >= 0 && ty <= 9 && !this.board[y + s.ey][x + s.ex]) add(tx, ty);
+                }
+            } else if (type === 'N') {
+                const hm = [
+                    {tx: x + 1, ty: y - 2, bx: x, by: y - 1}, {tx: x - 1, ty: y - 2, bx: x, by: y - 1},
+                    {tx: x + 1, ty: y + 2, bx: x, by: y + 1}, {tx: x - 1, ty: y + 2, bx: x, by: y + 1},
+                    {tx: x + 2, ty: y - 1, bx: x + 1, by: y}, {tx: x + 2, ty: y + 1, bx: x + 1, by: y},
+                    {tx: x - 2, ty: y - 1, bx: x - 1, by: y}, {tx: x - 2, ty: y + 1, bx: x - 1, by: y}
+                ];
+                for (const m of hm) {
+                    if (m.tx >= 0 && m.tx <= 8 && m.ty >= 0 && m.ty <= 9 && !this.board[m.by][m.bx]) add(m.tx, m.ty);
+                }
+            } else if (type === 'R') {
+                const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+                for (const [dx, dy] of dirs) {
+                    let tx = x + dx, ty = y + dy;
+                    while (tx >= 0 && tx <= 8 && ty >= 0 && ty <= 9) {
+                        const target = this.board[ty][tx];
+                        if (!target) add(tx, ty);
+                        else { if (!this.isSameColor(p, target)) add(tx, ty); break; }
+                        tx += dx; ty += dy;
+                    }
+                }
+            } else if (type === 'C') {
+                const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+                for (const [dx, dy] of dirs) {
+                    let tx = x + dx, ty = y + dy;
+                    while (tx >= 0 && tx <= 8 && ty >= 0 && ty <= 9) {
+                        const target = this.board[ty][tx];
+                        if (!target) add(tx, ty);
+                        else { tx += dx; ty += dy; break; }
+                        tx += dx; ty += dy;
+                    }
+                    while (tx >= 0 && tx <= 8 && ty >= 0 && ty <= 9) {
+                        const target = this.board[ty][tx];
+                        if (target) { if (!this.isSameColor(p, target)) add(tx, ty); break; }
+                        tx += dx; ty += dy;
+                    }
+                }
+            } else if (type === 'P') {
+                const forward = isRed ? -1 : 1;
+                add(x, y + forward);
+                const crossed = isRed ? (y <= 4) : (y >= 5);
+                if (crossed) { add(x - 1, y); add(x + 1, y); }
+            }
+            return moves;
+        }
+
+        findKing(isRed) {
+            const target = isRed ? 'K' : 'k';
+            for (let y = 0; y < 10; y++) {
+                for (let x = 3; x <= 5; x++) {
+                    if (this.board[y][x] === target) return { x, y };
+                }
+            }
+            return null;
+        }
+
+        areKingsFacing() {
+            const redK = this.findKing(true), blackK = this.findKing(false);
+            if (!redK || !blackK || redK.x !== blackK.x) return false;
+            const minY = Math.min(redK.y, blackK.y), maxY = Math.max(redK.y, blackK.y);
+            for (let y = minY + 1; y < maxY; y++) {
+                if (this.board[y][redK.x] !== null) return false;
+            }
+            return true;
+        }
+
+        isCheck(isRed) {
+            const kingPos = this.findKing(isRed);
+            if (!kingPos) return false;
+            const opponentIsRed = !isRed;
+            for (let y = 0; y < 10; y++) {
+                for (let x = 0; x < 9; x++) {
+                    const p = this.board[y][x];
+                    if (p && this.isRed(p) === opponentIsRed) {
+                        const moves = this.getPseudoLegalMoves(x, y);
+                        if (moves.some(m => m.toX === kingPos.x && m.toY === kingPos.y)) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        getLegalMoves(forColor = this.turn) {
+            const isRed = (forColor === 'w');
+            const legalMoves = [];
+            for (let y = 0; y < 10; y++) {
+                for (let x = 0; x < 9; x++) {
+                    const p = this.board[y][x];
+                    if (p && this.isRed(p) === isRed) {
+                        const pseudo = this.getPseudoLegalMoves(x, y);
+                        for (const move of pseudo) {
+                            const origDest = this.board[move.toY][move.toX];
+                            this.board[move.toY][move.toX] = p;
+                            this.board[move.fromY][move.fromX] = null;
+                            const facing = this.areKingsFacing();
+                            const check = this.isCheck(isRed);
+                            this.board[move.fromY][move.fromX] = p;
+                            this.board[move.toY][move.toX] = origDest;
+
+                            if (!facing && !check) legalMoves.push(move);
+                        }
+                    }
+                }
+            }
+            return legalMoves;
+        }
+
+        generateMoveNotation(move) {
+            const p = move.piece;
+            const isRed = this.isRed(p);
+            const name = PIECE_NAMES[p];
+            const digitRed = ['九', '八', '七', '六', '五', '四', '三', '二', '一'];
+            const digitBlack = ['１', '２', '３', '４', '５', '６', '７', '８', '９'];
+            const fromColStr = isRed ? digitRed[move.fromX] : digitBlack[move.fromX];
+            const toColStr = isRed ? digitRed[move.toX] : digitBlack[move.toX];
+            const dy = move.toY - move.fromY;
+            const type = p.toUpperCase();
+
+            if (dy === 0) return `${name}${fromColStr}平${toColStr}`;
+            const isAdvance = isRed ? (dy < 0) : (dy > 0);
+            const actionStr = isAdvance ? '進' : '退';
+            const stepCount = Math.abs(dy);
+
+            if (type === 'N' || type === 'B' || type === 'A') {
+                return `${name}${fromColStr}${actionStr}${toColStr}`;
+            } else {
+                const stepStr = isRed ? ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'][stepCount] : stepCount.toString();
+                return `${name}${fromColStr}${actionStr}${stepStr}`;
+            }
+        }
+
+        makeMove(move) {
+            const captured = this.board[move.toY][move.toX];
+            const notation = this.generateMoveNotation(move);
+            this.history.push({
+                fromX: move.fromX, fromY: move.fromY,
+                toX: move.toX, toY: move.toY,
+                piece: move.piece, captured: captured,
+                notation: notation, prevTurn: this.turn,
+                fenBefore: this.getFen()
+            });
+            this.redoStack = [];
+            this.board[move.toY][move.toX] = move.piece;
+            this.board[move.fromY][move.fromX] = null;
+            this.turn = (this.turn === 'w') ? 'b' : 'w';
+            return { captured, notation };
+        }
+
+        undoMove() {
+            if (this.history.length === 0) return null;
+            const lastMove = this.history.pop();
+            this.board[lastMove.fromY][lastMove.fromX] = lastMove.piece;
+            this.board[lastMove.toY][lastMove.toX] = lastMove.captured;
+            this.turn = lastMove.prevTurn;
+            this.redoStack.push(lastMove);
+            return lastMove;
+        }
+
+        redoMove() {
+            if (this.redoStack.length === 0) return null;
+            const move = this.redoStack.pop();
+            this.board[move.toY][move.toX] = move.piece;
+            this.board[move.fromY][move.fromX] = null;
+            this.turn = (move.prevTurn === 'w') ? 'b' : 'w';
+            this.history.push(move);
+            return move;
+        }
+    }
+
+    /* =========================================================================
+       音效系統 (SoundEffects)
+       ========================================================================= */
+    class SoundEffects {
+        constructor() {
+            this.ctx = null;
+            this.enabled = true;
+        }
+        init() {
+            if (!this.ctx) {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtx) this.ctx = new AudioCtx();
+            }
+            if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+        }
+        playMove() {
+            if (!this.enabled) return;
+            this.init();
+            if (!this.ctx) return;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(320, this.ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(110, this.ctx.currentTime + 0.07);
+            gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.07);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start();
+            osc.stop(this.ctx.currentTime + 0.07);
+        }
+        playCapture() {
+            if (!this.enabled) return;
+            this.init();
+            if (!this.ctx) return;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(450, this.ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.11);
+            gain.gain.setValueAtTime(0.38, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.11);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start();
+            osc.stop(this.ctx.currentTime + 0.11);
+        }
+    }
+
+    /* =========================================================================
+       UI 控制器與事件綁定 (PikafishUI)
+       ========================================================================= */
+    class PikafishUI {
+        constructor() {
+            this.game = new XiangqiGame();
+            this.sound = new SoundEffects();
+            this.worker = null;
+            this.isFlipped = false;
+            this.autoAnalyze = true;
+            this.selectedSquare = null;
+            this.legalMovesCache = [];
+            this.isEditMode = false;
+            this.showThreats = true;
+            this.selectedPalettePiece = null;
+            this.customDirectoryHandle = null;
+            this.lastAnalysisResult = null;
+            this.analysisSessionId = 0;
+            this.autoPlayTimer = null;
+            this.cloudBestMoveData = null;
+            this.evalHistory = [0];
+
+            // 雙軌引擎模式：'web' 或 'native'
+            this.engineSource = 'web';
+            this.nativeSocket = null;
+            this.isNativeConnected = false;
+
+            this.initDOMElements();
+            this.initWorker();
+            this.bindEvents();
+            this.renderGridSvg();
+            this.renderBoard();
+            this.updateStatus();
+
+            if (this.autoAnalyze) this.triggerSearch();
+        }
+
+        initDOMElements() {
+            this.domContainer = document.getElementById('boardContainer');
+            this.domGridSvg = document.getElementById('boardGridSvg');
+            this.domIndicators = document.getElementById('indicatorsLayer');
+            this.domPieces = document.getElementById('piecesLayer');
+            this.domArrowLayer = document.getElementById('aiArrowLayer');
+
+            this.domWorkingBadge = document.getElementById('engineWorkingBadge');
+            this.domEvalScoreBadge = document.getElementById('evalScoreBadge');
+            this.domEvalBarRed = document.getElementById('evalBarRed');
+            this.domEvalBarBlack = document.getElementById('evalBarBlack');
+            this.domRedWinRate = document.getElementById('redWinRate');
+            this.domBlackWinRate = document.getElementById('blackWinRate');
+            this.domTurnIndicator = document.getElementById('turnIndicator');
+            this.domCheckBadge = document.getElementById('checkBadge');
+            this.domRepetitionBadge = document.getElementById('repetitionBadge');
+            this.domOpeningName = document.getElementById('openingName');
+            this.domAccuracyBadge = document.getElementById('statAccuracyBadge');
+
+            this.domStatDepth = document.getElementById('statDepth');
+            this.domStatNps = document.getElementById('statNps');
+            this.domStatNodes = document.getElementById('statNodes');
+            this.domStatHashHits = document.getElementById('statHashHits');
+
+            this.domPv1Notation = document.getElementById('pv1Notation');
+            this.domPv1Score = document.getElementById('pv1Score');
+            this.domPv1Line = document.getElementById('pv1Line');
+            this.domPv2Notation = document.getElementById('pv2Notation');
+            this.domPv2Score = document.getElementById('pv2Score');
+            this.domPv2Line = document.getElementById('pv2Line');
+            this.domPv3Notation = document.getElementById('pv3Notation');
+            this.domPv3Score = document.getElementById('pv3Score');
+            this.domPv3Line = document.getElementById('pv3Line');
+
+            this.domMoveCount = document.getElementById('moveCountBadge');
+            this.domMoveHistory = document.getElementById('moveHistoryList');
+            this.domUcciLog = document.getElementById('ucciTerminalLog');
+            this.domInputUcci = document.getElementById('inputUcciCommand');
+
+            this.domSavePath = document.getElementById('inputSavePath');
+            this.domRecordTitle = document.getElementById('inputRecordTitle');
+            this.domDirBoundText = document.getElementById('dirBoundText');
+            this.domSaveStatusBadge = document.getElementById('saveStatusBadge');
+            this.domEditPalette = document.getElementById('editPalette');
+            this.domEditModeLabel = document.getElementById('editModeLabel');
+            this.domThreatToggleLabel = document.getElementById('threatToggleLabel');
+            this.domPlayModeSelect = document.getElementById('playModeSelect');
+
+            this.domEvalGraphPath = document.getElementById('evalGraphPath');
+            this.domGraphEmptyNotice = document.getElementById('graphEmptyNotice');
+
+            // 殘局庫 EGTB 元素
+            this.domEgtbQueryStatus = document.getElementById('egtbQueryStatus');
+            this.domEgtbPieceCountText = document.getElementById('egtbPieceCountText');
+            this.domEgtbRuleStatus = document.getElementById('egtbRuleStatus');
+            this.domEgtbCloudMove = document.getElementById('egtbCloudMove');
+            this.domEgtbCloudResult = document.getElementById('egtbCloudResult');
+            this.btnQueryCloudEgtb = document.getElementById('btnQueryCloudEgtb');
+            this.btnApplyEgtbMove = document.getElementById('btnApplyEgtbMove');
+
+            // 大賽名局庫元素
+            this.domSelectTournament = document.getElementById('selectTournamentGame');
+            this.domTourCardEvent = document.getElementById('tourCardEvent');
+            this.domTourCardResult = document.getElementById('tourCardResult');
+            this.domTourCardRed = document.getElementById('tourCardRed');
+            this.domTourCardBlack = document.getElementById('tourCardBlack');
+            this.domTourCardDesc = document.getElementById('tourCardDesc');
+            this.btnLoadTournamentGame = document.getElementById('btnLoadTournamentGame');
+            this.btnJumpKeyMove = document.getElementById('btnJumpKeyMove');
+            this.btnAutoPlayGame = document.getElementById('btnAutoPlayGame');
+            this.autoPlayIcon = document.getElementById('autoPlayIcon');
+            this.autoPlayLabel = document.getElementById('autoPlayLabel');
+
+            // 雙軌切換元素
+            this.btnEngineSourceWeb = document.getElementById('btnEngineSourceWeb');
+            this.btnEngineSourceNative = document.getElementById('btnEngineSourceNative');
+            this.domNativeBridgeBar = document.getElementById('nativeBridgeBar');
+            this.domNativeStatusDot = document.getElementById('nativeStatusDot');
+            this.domNativeStatusText = document.getElementById('nativeStatusText');
+            this.btnRetryNativeWs = document.getElementById('btnRetryNativeWs');
+
+            // 風格按鈕
+            this.btnStyleConservative = document.getElementById('styleConservative');
+            this.btnStyleBalanced = document.getElementById('styleBalanced');
+            this.btnStyleAggressive = document.getElementById('styleAggressive');
+        }
+
+        /* =========================================================================
+           本地原版皮卡魚 WebSocket 橋接協議管理
+           ========================================================================= */
+        initNativeWebSocket() {
+            if (this.nativeSocket) {
+                try { this.nativeSocket.close(); } catch(e){}
+                this.nativeSocket = null;
+            }
+
+            this.updateNativeStatusUI(false, '連線中 ws://localhost:8888 ...');
+
+            try {
+                this.nativeSocket = new WebSocket('ws://localhost:8888');
+
+                this.nativeSocket.onopen = () => {
+                    this.isNativeConnected = true;
+                    this.updateNativeStatusUI(true, '已連線本地皮卡魚 (AVX-512/多核心滿血運算)');
+                    this.showToast('🚀 已成功連線至本機原生皮卡魚引擎！');
+                    this.appendUcciLog('[Native WS] Connected to local bridge.');
+                    this.sendNativeCommand('ucci');
+                    this.sendNativeCommand('isready');
+                    if (this.autoAnalyze) this.triggerSearch();
+                };
+
+                this.nativeSocket.onmessage = (event) => {
+                    try {
+                        const msg = JSON.parse(event.data);
+                        if (msg.type === 'ENGINE_OUTPUT') {
+                            this.handleNativeEngineOutput(msg.raw);
+                        } else if (msg.type === 'STATUS') {
+                            this.appendUcciLog(`[Native WS Status] ${msg.enginePath}`);
+                        }
+                    } catch(err) {
+                        this.handleNativeEngineOutput(event.data);
+                    }
+                };
+
+                this.nativeSocket.onclose = () => {
+                    this.isNativeConnected = false;
+                    this.updateNativeStatusUI(false, '本地橋接已斷開 (請確認 pikafish_bridge.py 已啟動)');
+                    this.appendUcciLog('[Native WS] Connection closed.');
+                };
+
+                this.nativeSocket.onerror = (err) => {
+                    this.isNativeConnected = false;
+                    this.updateNativeStatusUI(false, '無法連線至 ws://localhost:8888');
+                };
+            } catch (e) {
+                this.isNativeConnected = false;
+                this.updateNativeStatusUI(false, 'WebSocket 初始化異常');
+            }
+        }
+
+        updateNativeStatusUI(connected, text) {
+            if (!this.domNativeStatusDot || !this.domNativeStatusText) return;
+            this.domNativeStatusDot.className = connected 
+                ? 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse'
+                : 'w-2 h-2 rounded-full bg-rose-500';
+            this.domNativeStatusText.textContent = text;
+        }
+
+        sendNativeCommand(cmd) {
+            if (this.nativeSocket && this.nativeSocket.readyState === WebSocket.OPEN) {
+                this.nativeSocket.send(JSON.stringify({ type: 'COMMAND', command: cmd }));
+            }
+        }
+
+        handleNativeEngineOutput(line) {
+            this.appendUcciLog(line);
+            
+            // 解析皮卡魚輸出的 info 行 (depth, score cp, nodes, nps, pv)
+            if (line.startsWith('info') && line.includes('depth')) {
+                const parts = line.split(' ');
+                let depth = null, scoreCp = null, scoreMate = null, nodes = null, nps = null, pv = [];
+                for (let i = 0; i < parts.length; i++) {
+                    if (parts[i] === 'depth' && parts[i+1]) depth = parts[i+1];
+                    if (parts[i] === 'score') {
+                        if (parts[i+1] === 'cp' && parts[i+2]) scoreCp = parseInt(parts[i+2], 10);
+                        if (parts[i+1] === 'mate' && parts[i+2]) scoreMate = parseInt(parts[i+2], 10);
+                    }
+                    if (parts[i] === 'nodes' && parts[i+1]) nodes = parseInt(parts[i+1], 10);
+                    if (parts[i] === 'nps' && parts[i+1]) nps = parseInt(parts[i+1], 10);
+                    if (parts[i] === 'pv') {
+                        pv = parts.slice(i + 1);
+                        break;
+                    }
+                }
+
+                if (depth) this.domStatDepth.textContent = `${depth} / 26+`;
+                if (nodes) this.domStatNodes.textContent = nodes.toLocaleString();
+                if (nps) this.domStatNps.textContent = nps.toLocaleString();
+
+                if (scoreCp !== null) {
+                    const cp = (scoreCp / 100).toFixed(2);
+                    this.domEvalScoreBadge.textContent = `CP: ${scoreCp > 0 ? '+' : ''}${cp}`;
+                    const winProb = 1 / (1 + Math.pow(10, -scoreCp / 800));
+                    const redPct = Math.round(winProb * 100);
+                    this.domRedWinRate.textContent = `${redPct}%`;
+                    this.domBlackWinRate.textContent = `${100 - redPct}%`;
+                    this.domEvalBarRed.style.width = `${redPct}%`;
+                    this.domEvalBarBlack.style.width = `${100 - redPct}%`;
+                }
+
+                // 處理首選著法 (UCCI 格式如 h2e2, b0c2)
+                if (pv.length > 0) {
+                    const ucciMove = pv[0];
+                    const converted = this.convertUcciToMove(ucciMove);
+                    if (converted) {
+                        const notation = this.game.generateMoveNotation(converted);
+                        this.domPv1Notation.textContent = notation;
+                        this.domPv1Score.textContent = this.domEvalScoreBadge.textContent.replace('CP: ', '');
+                        this.domPv1Line.textContent = `原生皮卡魚主線: ${pv.slice(0, 6).join(' ')}`;
+                        this.renderMultiPvArrows([{ rank: 1, move: converted }]);
+                    }
+                }
+            } else if (line.startsWith('bestmove')) {
+                this.domWorkingBadge.classList.add('hidden');
+                const parts = line.split(' ');
+                const bestUcci = parts[1];
+                if (bestUcci && bestUcci !== '(none)') {
+                    const converted = this.convertUcciToMove(bestUcci);
+                    const mode = this.domPlayModeSelect.value;
+                    const isComputerTurn = (mode === 'vs_black' && this.game.turn === 'b') || (mode === 'vs_red' && this.game.turn === 'w');
+                    if (isComputerTurn && converted) {
+                        this.executeMove(converted);
+                    }
+                }
+            }
+        }
+
+        convertUcciToMove(ucciStr) {
+            if (!ucciStr || ucciStr.length < 4) return null;
+            const fromX = ucciStr.charCodeAt(0) - 97;
+            const fromY = 9 - parseInt(ucciStr[1], 10);
+            const toX = ucciStr.charCodeAt(2) - 97;
+            const toY = 9 - parseInt(ucciStr[3], 10);
+            const piece = this.game.board[fromY][fromX];
+            const captured = this.game.board[toY][toX];
+            return { fromX, fromY, toX, toY, piece, captured };
+        }
+
+        initWorker() {
+            try {
+                const blob = new Blob([WORKER_CODE_STRING], { type: 'application/javascript' });
+                const workerUrl = URL.createObjectURL(blob);
+                this.worker = new Worker(workerUrl);
+
+                this.worker.onmessage = (e) => {
+                    const data = e.data;
+                    if (data.type === 'SEARCH_DONE') {
+                        if (data.sessionId === this.analysisSessionId) {
+                            this.handleSearchDone(data.result);
+                        }
+                    } else if (data.type === 'NNUE_LOADED') {
+                        this.showToast('外部神經網路權重加載成功！');
+                    }
+                };
+            } catch (err) {
+                console.warn('Worker 初始化失敗，採用容錯模式：', err);
+            }
+        }
+
+        getBoardCoords(x, y) {
+            const paddingX = 30, paddingY = 32;
+            const cellW = (460 - paddingX * 2) / 8;
+            const cellH = (512 - paddingY * 2) / 9;
+            const effectiveX = this.isFlipped ? (8 - x) : x;
+            const effectiveY = this.isFlipped ? (9 - y) : y;
+            const px = paddingX + effectiveX * cellW;
+            const py = paddingY + effectiveY * cellH;
+            return { px, py, pctX: (px / 460) * 100, pctY: (py / 512) * 100 };
+        }
+
+        getGridCoordsFromClient(clientX, clientY) {
+            const rect = this.domContainer.getBoundingClientRect();
+            const scaleX = 460 / rect.width, scaleY = 512 / rect.height;
+            const boardPx = (clientX - rect.left) * scaleX;
+            const boardPy = (clientY - rect.top) * scaleY;
+            const paddingX = 30, paddingY = 32;
+            const cellW = (460 - paddingX * 2) / 8;
+            const cellH = (512 - paddingY * 2) / 9;
+            let x = Math.round((boardPx - paddingX) / cellW);
+            let y = Math.round((boardPy - paddingY) / cellH);
+            if (x < 0 || x > 8 || y < 0 || y > 9) return null;
+            if (this.isFlipped) { x = 8 - x; y = 9 - y; }
+            return { x, y };
+        }
+
+        renderGridSvg() {
+            let svgHtml = '';
+            const paddingX = 30, paddingY = 32;
+            const cellW = (460 - paddingX * 2) / 8;
+            const cellH = (512 - paddingY * 2) / 9;
+
+            for (let r = 0; r < 10; r++) {
+                const y = paddingY + r * cellH;
+                svgHtml += `<line x1="${paddingX}" y1="${y}" x2="${460 - paddingX}" y2="${y}" stroke="#6e3f16" stroke-width="1.8" />`;
+            }
+            for (let c = 0; c < 9; c++) {
+                const x = paddingX + c * cellW;
+                if (c === 0 || c === 8) {
+                    svgHtml += `<line x1="${x}" y1="${paddingY}" x2="${x}" y2="${512 - paddingY}" stroke="#6e3f16" stroke-width="2.5" />`;
+                } else {
+                    svgHtml += `<line x1="${x}" y1="${paddingY}" x2="${x}" y2="${paddingY + 4 * cellH}" stroke="#6e3f16" stroke-width="1.8" />`;
+                    svgHtml += `<line x1="${x}" y1="${paddingY + 5 * cellH}" x2="${x}" y2="${paddingY + 9 * cellH}" stroke="#6e3f16" stroke-width="1.8" />`;
+                }
+            }
+            const drawSlash = (x1, y1, x2, y2) => {
+                const p1 = this.getBoardCoords(x1, y1);
+                const p2 = this.getBoardCoords(x2, y2);
+                return `<line x1="${p1.px}" y1="${p1.py}" x2="${p2.px}" y2="${p2.py}" stroke="#6e3f16" stroke-width="1.8" />`;
+            };
+            svgHtml += drawSlash(3, 0, 5, 2);
+            svgHtml += drawSlash(5, 0, 3, 2);
+            svgHtml += drawSlash(3, 7, 5, 9);
+            svgHtml += drawSlash(5, 7, 3, 9);
+            this.domGridSvg.innerHTML = svgHtml;
+        }
+
+        renderPieces() {
+            this.domPieces.innerHTML = '';
+            for (let y = 0; y < 10; y++) {
+                for (let x = 0; x < 9; x++) {
+                    const piece = this.game.board[y][x];
+                    if (!piece) continue;
+                    const isRed = this.game.isRed(piece);
+                    const name = PIECE_NAMES[piece];
+                    const coords = this.getBoardCoords(x, y);
+
+                    const pieceEl = document.createElement('div');
+                    pieceEl.className = `chess-piece absolute w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold cursor-pointer font-serif select-none ${
+                        isRed ? 'bg-amber-100 text-red-700 border-2 border-red-700 shadow-md' : 'bg-slate-800 text-amber-100 border-2 border-amber-200/60 shadow-md'
+                    }`;
+
+                    if (this.selectedSquare && this.selectedSquare.x === x && this.selectedSquare.y === y) {
+                        pieceEl.classList.add('selected');
+                    }
+                    pieceEl.style.left = `${coords.pctX}%`;
+                    pieceEl.style.top = `${coords.pctY}%`;
+                    pieceEl.style.fontSize = '20px';
+                    pieceEl.textContent = name;
+
+                    pieceEl.addEventListener('contextmenu', (e) => {
+                        if (this.isEditMode) {
+                            e.preventDefault();
+                            this.game.board[y][x] = null;
+                            this.renderBoard();
+                            this.updateStatus();
+                        }
+                    });
+                    this.domPieces.appendChild(pieceEl);
+                }
+            }
+        }
+
+        renderIndicators() {
+            this.domIndicators.innerHTML = '';
+            if (!this.selectedSquare || this.isEditMode) return;
+            const moves = this.legalMovesCache.filter(m => m.fromX === this.selectedSquare.x && m.fromY === this.selectedSquare.y);
+            for (const move of moves) {
+                const coords = this.getBoardCoords(move.toX, move.toY);
+                const indicator = document.createElement('div');
+                if (move.captured) {
+                    indicator.className = 'move-indicator absolute w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-rose-500 animate-pulse bg-rose-500/20 pointer-events-none';
+                } else {
+                    indicator.className = 'move-indicator absolute w-3.5 h-3.5 rounded-full bg-emerald-500 shadow-lg pointer-events-none border border-emerald-200';
+                }
+                indicator.style.left = `${coords.pctX}%`;
+                indicator.style.top = `${coords.pctY}%`;
+                this.domIndicators.appendChild(indicator);
+            }
+        }
+
+        renderMultiPvArrows(pvList, highlightRank = null) {
+            this.domArrowLayer.innerHTML = '';
+            if (!pvList || pvList.length === 0) return;
+            const colors = ['#10b981', '#06b6d4', '#f59e0b'];
+            let defsHtml = '<defs>';
+            let linesHtml = '';
+
+            pvList.slice(0, 3).forEach((pv, idx) => {
+                const move = pv.move;
+                if (!move) return;
+                const isHighlighted = (highlightRank === null || highlightRank === pv.rank);
+                const color = colors[idx] || '#10b981';
+                const markerId = `arrowHead_${idx}`;
+                defsHtml += `
+                    <marker id="${markerId}" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
+                        <polygon points="0 0, 6 3, 0 6" fill="${color}" />
+                    </marker>
+                `;
+                const start = this.getBoardCoords(move.fromX, move.fromY);
+                const end = this.getBoardCoords(move.toX, move.toY);
+                const strokeWidth = (idx === 0 || isHighlighted) ? 4.5 : 2.5;
+                const dash = idx === 0 ? '' : 'stroke-dasharray="5,4"';
+                const opacity = isHighlighted ? (idx === 0 ? 0.95 : 0.8) : 0.25;
+
+                linesHtml += `
+                    <line x1="${start.px}" y1="${start.py}" x2="${end.px}" y2="${end.py}" 
+                          stroke="${color}" stroke-width="${strokeWidth}" stroke-linecap="round" 
+                          stroke-opacity="${opacity}" ${dash} marker-end="url(#${markerId})" />
+                    <circle cx="${start.px}" cy="${start.py}" r="${idx === 0 ? 5 : 3.5}" fill="${color}" opacity="${opacity}" />
+                `;
+            });
+            defsHtml += '</defs>';
+            this.domArrowLayer.innerHTML = defsHtml + linesHtml;
+        }
+
+        clearAiArrows() {
+            this.domArrowLayer.innerHTML = '';
+        }
+
+        renderBoard() {
+            this.renderPieces();
+            this.renderIndicators();
+        }
+
+        handleBoardClick(e) {
+            const coords = this.getGridCoordsFromClient(e.clientX, e.clientY);
+            if (!coords) return;
+
+            if (this.isEditMode) {
+                if (this.selectedPalettePiece) {
+                    this.game.board[coords.y][coords.x] = this.selectedPalettePiece;
+                    this.renderBoard();
+                    this.updateStatus();
+                }
+                return;
+            }
+
+            const mode = this.domPlayModeSelect.value;
+            const currentTurnIsRed = (this.game.turn === 'w');
+            if (mode === 'vs_black' && !currentTurnIsRed) return;
+            if (mode === 'vs_red' && currentTurnIsRed) return;
+
+            const clickedPiece = this.game.board[coords.y][coords.x];
+
+            if (this.selectedSquare) {
+                const matchedMove = this.legalMovesCache.find(
+                    m => m.fromX === this.selectedSquare.x && m.fromY === this.selectedSquare.y &&
+                         m.toX === coords.x && m.toY === coords.y
+                );
+                if (matchedMove) {
+                    this.executeMove(matchedMove);
+                    return;
+                }
+            }
+
+            if (clickedPiece && this.game.isRed(clickedPiece) === currentTurnIsRed) {
+                this.selectedSquare = coords;
+                this.legalMovesCache = this.game.getLegalMoves(this.game.turn);
+                this.renderBoard();
+            } else {
+                this.selectedSquare = null;
+                this.renderBoard();
+            }
+        }
+
+        executeMove(move) {
+            const result = this.game.makeMove(move);
+            if (result.captured) this.sound.playCapture();
+            else this.sound.playMove();
+
+            this.selectedSquare = null;
+            this.legalMovesCache = [];
+            this.clearAiArrows();
+            this.renderBoard();
+            this.updateStatus();
+            this.appendUcciLog(`gui move ${result.notation}`);
+
+            const mode = this.domPlayModeSelect.value;
+            const isComputerTurn = (mode === 'vs_black' && this.game.turn === 'b') || (mode === 'vs_red' && this.game.turn === 'w');
+
+            if (isComputerTurn) {
+                setTimeout(() => this.triggerAiAutoMove(), 250);
+            } else if (this.autoAnalyze) {
+                this.triggerSearch();
+            }
+        }
+
+        triggerAiAutoMove() {
+            if (!this.worker) return;
+            this.domWorkingBadge.classList.remove('hidden');
+            const sid = ++this.analysisSessionId;
+            const fen = this.game.getFen();
+
+            this.worker.postMessage({
+                type: 'SEARCH',
+                fen: fen,
+                depth: 5,
+                sessionId: sid
+            });
+        }
+
+        triggerSearch() {
+            this.domWorkingBadge.classList.remove('hidden');
+
+            if (this.engineSource === 'native' && this.isNativeConnected) {
+                // 發送至本地原版皮卡魚
+                const fen = this.game.getFen();
+                this.sendNativeCommand('stop');
+                this.sendNativeCommand(`position fen ${fen}`);
+                this.sendNativeCommand('go depth 20 movetime 3000');
+                return;
+            }
+
+            // 回退使用內建 Web Worker 引擎
+            if (!this.worker) return;
+            const sid = ++this.analysisSessionId;
+            const fen = this.game.getFen();
+
+            this.worker.postMessage({
+                type: 'SEARCH',
+                fen: fen,
+                depth: 4,
+                sessionId: sid
+            });
+        }
+
+        handleSearchDone(result) {
+            this.domWorkingBadge.classList.add('hidden');
+            this.lastAnalysisResult = result;
+            if (!result || !result.pvList) return;
+
+            this.domStatDepth.textContent = `${result.depth} / ${result.depth + 2}`;
+            this.domStatNodes.textContent = result.nodes.toLocaleString();
+            this.domStatNps.textContent = result.nps.toLocaleString();
+            this.domStatHashHits.textContent = result.hashHits.toLocaleString();
+
+            const mode = this.domPlayModeSelect.value;
+            const isComputerTurn = (mode === 'vs_black' && this.game.turn === 'b') || (mode === 'vs_red' && this.game.turn === 'w');
+
+            if (result.pvList.length > 0) {
+                const best = result.pvList[0];
+                const notation = this.game.generateMoveNotation(best.move);
+                const scoreNum = (this.game.turn === 'w') ? best.score : -best.score;
+                const cp = (scoreNum / 100).toFixed(2);
+                this.domEvalScoreBadge.textContent = `CP: ${scoreNum > 0 ? '+' : ''}${cp}`;
+
+                const winProb = 1 / (1 + Math.pow(10, -scoreNum / 800));
+                const redPct = Math.round(winProb * 100);
+                const blackPct = 100 - redPct;
+                this.domRedWinRate.textContent = `${redPct}%`;
+                this.domBlackWinRate.textContent = `${blackPct}%`;
+                this.domEvalBarRed.style.width = `${redPct}%`;
+                this.domEvalBarBlack.style.width = `${blackPct}%`;
+
+                this.domPv1Notation.textContent = notation;
+                this.domPv1Score.textContent = `${scoreNum > 0 ? '+' : ''}${cp}`;
+                this.domPv1Line.textContent = `最佳著法: ${notation} (${best.score} 分)`;
+
+                if (result.pvList[1]) {
+                    const pv2 = result.pvList[1];
+                    const n2 = this.game.generateMoveNotation(pv2.move);
+                    this.domPv2Notation.textContent = n2;
+                    this.domPv2Score.textContent = (pv2.score / 100).toFixed(2);
+                    this.domPv2Line.textContent = `次選著法: ${n2}`;
+                } else {
+                    this.domPv2Notation.textContent = '-';
+                    this.domPv2Score.textContent = '-';
+                    this.domPv2Line.textContent = '-';
+                }
+
+                if (result.pvList[2]) {
+                    const pv3 = result.pvList[2];
+                    const n3 = this.game.generateMoveNotation(pv3.move);
+                    this.domPv3Notation.textContent = n3;
+                    this.domPv3Score.textContent = (pv3.score / 100).toFixed(2);
+                    this.domPv3Line.textContent = `備選著法: ${n3}`;
+                } else {
+                    this.domPv3Notation.textContent = '-';
+                    this.domPv3Score.textContent = '-';
+                    this.domPv3Line.textContent = '-';
+                }
+
+                this.renderMultiPvArrows(result.pvList);
+
+                if (isComputerTurn && best.move) {
+                    this.executeMove(best.move);
+                }
+            }
+        }
+
+        updateStatus() {
+            const isRedTurn = (this.game.turn === 'w');
+            this.domTurnIndicator.innerHTML = `
+                <span class="w-2 h-2 rounded-full ${isRedTurn ? 'bg-rose-500' : 'bg-sky-400'} animate-ping"></span>
+                <span>${isRedTurn ? '輪到：紅先' : '輪到：黑先'}</span>
+            `;
+            this.domTurnIndicator.className = `px-3 py-1 rounded-xl font-bold flex items-center gap-1.5 shadow-sm border ${
+                isRedTurn ? 'bg-rose-950/90 text-rose-300 border-rose-800' : 'bg-slate-900 text-sky-300 border-slate-700'
+            }`;
+
+            const inCheck = this.game.isCheck(isRedTurn);
+            if (inCheck) this.domCheckBadge.classList.remove('hidden');
+            else this.domCheckBadge.classList.add('hidden');
+
+            const curFen = this.game.getFen();
+            const baseFen = curFen.split(' ')[0] + ' ' + curFen.split(' ')[1];
+            this.domOpeningName.textContent = OPENING_BOOK[baseFen] || "中局攻防 / 裁決器在線";
+
+            this.updateEndgameInfo();
+            this.renderMoveHistory();
+        }
+
+        countTotalPieces() {
+            let count = 0;
+            for (let y = 0; y < 10; y++) {
+                for (let x = 0; x < 9; x++) {
+                    if (this.game.board[y][x]) count++;
+                }
+            }
+            return count;
+        }
+
+        detectEndgamePatternName() {
+            const b = this.game.board;
+            let redR = 0, redN = 0, redC = 0, redP = 0, redA = 0, redB = 0;
+            let blackR = 0, blackN = 0, blackC = 0, blackP = 0, blackA = 0, blackB = 0;
+            for (let y = 0; y < 10; y++) {
+                for (let x = 0; x < 9; x++) {
+                    const p = b[y][x];
+                    if (!p) continue;
+                    if (p === 'R') redR++; else if (p === 'N') redN++; else if (p === 'C') redC++;
+                    else if (p === 'P') redP++; else if (p === 'A') redA++; else if (p === 'B') redB++;
+                    else if (p === 'r') blackR++; else if (p === 'n') blackN++; else if (p === 'c') blackC++;
+                    else if (p === 'p') blackP++; else if (p === 'a') blackA++; else if (p === 'b') blackB++;
+                }
+            }
+            const redAtt = redR + redN + redC + redP;
+            const blackAtt = blackR + blackN + blackC + blackP;
+
+            if (redR === 1 && redAtt === 1 && blackAtt === 0 && blackA === 2 && blackB === 2) return '單車對士象全 (定式例和)';
+            if (blackR === 1 && blackAtt === 1 && redAtt === 0 && redA === 2 && redB === 2) return '單車對士象全 (定式例和)';
+            if (redR === 1 && redAtt === 1 && blackAtt === 0 && (blackA + blackB) <= 2) return '單車勝殘象殘士 (車方必勝)';
+            if (blackR === 1 && blackAtt === 1 && redAtt === 0 && (redA + redB) <= 2) return '單車勝殘象殘士 (車方必勝)';
+            if (redN === 1 && redP >= 1 && redAtt === (1 + redP) && blackAtt === 0 && blackA === 0 && blackB === 2) return '單馬高兵必勝雙象';
+            if (blackN === 1 && blackP >= 1 && blackAtt === (1 + blackP) && redAtt === 0 && redA === 0 && redB === 2) return '單馬高兵必勝雙象';
+            if (redN === 1 && redAtt === 1 && blackAtt === 0 && blackA >= 1) return '單馬對單士 (定式例和)';
+            if (blackN === 1 && blackAtt === 1 && redAtt === 0 && redA >= 1) return '單馬對單士 (定式例和)';
+
+            return '常規局勢';
+        }
+
+        updateEndgameInfo() {
+            const pieceCount = this.countTotalPieces();
+            if (this.domEgtbPieceCountText) {
+                this.domEgtbPieceCountText.textContent = `${pieceCount} 子 (${pieceCount <= 8 ? '殘局庫範圍' : '常規對局'})`;
+                this.domEgtbPieceCountText.className = pieceCount <= 8 ? 'text-amber-300 font-mono font-bold' : 'text-slate-200 font-mono';
+            }
+            const patternName = this.detectEndgamePatternName();
+            if (this.domEgtbRuleStatus) {
+                this.domEgtbRuleStatus.textContent = patternName;
+                this.domEgtbRuleStatus.className = patternName !== '常規局勢' ? 'text-emerald-400 font-mono font-bold' : 'text-slate-400 font-mono';
+            }
+            if (pieceCount <= 7) {
+                this.queryCloudEgtbSilently();
+            }
+        }
+
+        async queryCloudEgtbSilently() {
+            try {
+                const fen = encodeURIComponent(this.game.getFen());
+                const url = `https://www.chessdb.cn/chessdb.php?action=queryall&board=${fen}`;
+                if (this.domEgtbQueryStatus) {
+                    this.domEgtbQueryStatus.textContent = '雲庫查詢中...';
+                    this.domEgtbQueryStatus.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse';
+                }
+                const resp = await fetch(url, { signal: AbortSignal.timeout(2500) });
+                const text = await resp.text();
+                if (text && !text.startsWith('invalid') && !text.startsWith('unknown')) {
+                    this.parseCloudEgtbResponse(text);
+                } else {
+                    if (this.domEgtbQueryStatus) {
+                        this.domEgtbQueryStatus.textContent = '雲庫無資料 (本地深搜)';
+                        this.domEgtbQueryStatus.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700';
+                    }
+                }
+            } catch (err) {
+                if (this.domEgtbQueryStatus) {
+                    this.domEgtbQueryStatus.textContent = '本地離線模式';
+                    this.domEgtbQueryStatus.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700';
+                }
+            }
+        }
+
+        parseCloudEgtbResponse(rawText) {
+            const firstLine = rawText.split('|')[0] || rawText;
+            const parts = {};
+            firstLine.split(',').forEach(kv => {
+                const [k, v] = kv.split(':');
+                if (k && v) parts[k.trim()] = v.trim();
+            });
+
+            if (parts.move) {
+                const fromCol = parts.move.charCodeAt(0) - 97;
+                const fromRow = 9 - parseInt(parts.move[1], 10);
+                const toCol = parts.move.charCodeAt(2) - 97;
+                const toRow = 9 - parseInt(parts.move[3], 10);
+
+                const matchedMove = this.game.getLegalMoves(this.game.turn).find(m => 
+                    m.fromX === fromCol && m.fromY === fromRow && m.toX === toCol && m.toY === toRow
+                );
+
+                if (matchedMove) {
+                    const notation = this.game.generateMoveNotation(matchedMove);
+                    this.cloudBestMoveData = matchedMove;
+                    if (this.domEgtbCloudMove) this.domEgtbCloudMove.textContent = `${notation} (${parts.move})`;
+                    if (this.btnApplyEgtbMove) this.btnApplyEgtbMove.disabled = false;
+
+                    let scoreDesc = `分數: ${parts.score || 0}`;
+                    if (parts.step) {
+                        const scoreNum = parseInt(parts.score, 10);
+                        if (scoreNum > 0) scoreDesc = `必勝 (${parts.step} 步絕殺)`;
+                        else if (scoreNum < 0) scoreDesc = `必敗 (${parts.step} 步後負)`;
+                        else scoreDesc = `例和 (理論和棋)`;
+                    }
+
+                    if (this.domEgtbCloudResult) this.domEgtbCloudResult.textContent = scoreDesc;
+                    if (this.domEgtbQueryStatus) {
+                        this.domEgtbQueryStatus.textContent = '🟢 雲端 EGTB 命中真理步';
+                        this.domEgtbQueryStatus.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold';
+                    }
+
+                    this.domPv1Notation.textContent = `[真理步] ${notation}`;
+                    this.domPv1Score.textContent = parts.score ? (parseInt(parts.score, 10) / 100).toFixed(2) : '+0.00';
+                    this.domPv1Line.textContent = `殘局庫判定: ${scoreDesc}，正解: ${parts.move}`;
+                    this.renderMultiPvArrows([{ rank: 1, move: matchedMove }]);
+                }
+            }
+        }
+
+        renderMoveHistory() {
+            this.domMoveCount.textContent = `共 ${this.game.history.length} 步`;
+            if (this.game.history.length === 0) {
+                this.domMoveHistory.innerHTML = '<div class="text-slate-500 text-center py-4">新局開始，尚未走棋</div>';
+                return;
+            }
+            let html = '';
+            for (let i = 0; i < this.game.history.length; i += 2) {
+                const roundNum = Math.floor(i / 2) + 1;
+                const hRed = this.game.history[i];
+                const hBlack = this.game.history[i + 1];
+                html += `
+                    <div class="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-900 transition font-mono-code text-xs">
+                        <span class="text-slate-500 w-7 font-bold">${roundNum}.</span>
+                        <div class="flex-1 flex items-center">
+                            <span class="text-rose-400 font-medium">${hRed ? hRed.notation : ''}</span>
+                        </div>
+                        <div class="flex-1 flex items-center">
+                            <span class="text-slate-300 font-medium">${hBlack ? hBlack.notation : ''}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            this.domMoveHistory.innerHTML = html;
+            this.domMoveHistory.scrollTop = this.domMoveHistory.scrollHeight;
+        }
+
+        appendUcciLog(msg) {
+            const line = document.createElement('div');
+            line.textContent = `> ${msg}`;
+            this.domUcciLog.appendChild(line);
+            this.domUcciLog.scrollTop = this.domUcciLog.scrollHeight;
+        }
+
+        showToast(message) {
+            const toast = document.getElementById('toastNotification');
+            const msgEl = document.getElementById('toastMessage');
+            if (!toast || !msgEl) return;
+            msgEl.textContent = message;
+            toast.classList.remove('opacity-0', 'translate-y-20', 'pointer-events-none');
+            toast.classList.add('opacity-100', 'translate-y-0');
+            if (this.toastTimer) clearTimeout(this.toastTimer);
+            this.toastTimer = setTimeout(() => {
+                toast.classList.remove('opacity-100', 'translate-y-0');
+                toast.classList.add('opacity-0', 'translate-y-20', 'pointer-events-none');
+            }, 2500);
+        }
+
+        initPalette() {
+            const pieces = ['K', 'A', 'B', 'N', 'R', 'C', 'P', 'k', 'a', 'b', 'n', 'r', 'c', 'p'];
+            const container = document.getElementById('palettePieces');
+            container.innerHTML = '';
+            pieces.forEach(p => {
+                const isRed = (p >= 'A' && p <= 'Z');
+                const el = document.createElement('div');
+                el.className = `w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm cursor-pointer font-serif transition border ${
+                    isRed ? 'bg-amber-100 text-red-700 border-red-700' : 'bg-slate-800 text-amber-100 border-slate-600'
+                }`;
+                el.textContent = PIECE_NAMES[p];
+                el.addEventListener('click', () => {
+                    container.querySelectorAll('.w-8').forEach(b => b.classList.remove('ring-2', 'ring-amber-400'));
+                    el.classList.add('ring-2', 'ring-amber-400');
+                    this.selectedPalettePiece = p;
+                });
+                container.appendChild(el);
+            });
+        }
+
+        bindEvents() {
+            const safeBind = (id, evt, fn) => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener(evt, fn);
+            };
+
+            if (this.domContainer) {
+                this.domContainer.addEventListener('click', (e) => this.handleBoardClick(e));
+            }
+
+            // 雙軌引擎來源切換事件
+            if (this.btnEngineSourceWeb && this.btnEngineSourceNative) {
+                this.btnEngineSourceWeb.addEventListener('click', () => {
+                    this.engineSource = 'web';
+                    this.btnEngineSourceWeb.className = 'px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 transition';
+                    this.btnEngineSourceNative.className = 'px-2 py-0.5 rounded-lg text-[10px] text-slate-400 hover:text-slate-200 transition flex items-center gap-1';
+                    if (this.domNativeBridgeBar) this.domNativeBridgeBar.classList.add('hidden');
+                    this.showToast('已切換為：🌐 內建 Web Worker 引擎');
+                    if (this.autoAnalyze) this.triggerSearch();
+                });
+
+                this.btnEngineSourceNative.addEventListener('click', () => {
+                    this.engineSource = 'native';
+                    this.btnEngineSourceNative.className = 'px-2 py-0.5 rounded-lg text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 transition flex items-center gap-1';
+                    this.btnEngineSourceWeb.className = 'px-2 py-0.5 rounded-lg text-[10px] text-slate-400 hover:text-slate-200 transition';
+                    if (this.domNativeBridgeBar) this.domNativeBridgeBar.classList.remove('hidden');
+                    this.showToast('已切換為：🚀 本地皮卡魚原版 (即時連線中...)');
+                    this.initNativeWebSocket();
+                });
+            }
+
+            if (this.btnRetryNativeWs) {
+                this.btnRetryNativeWs.addEventListener('click', () => {
+                    this.initNativeWebSocket();
+                });
+            }
+
+            // 新局
+            safeBind('btnNewGame', 'click', () => {
+                this.game.reset();
+                this.selectedSquare = null;
+                this.clearAiArrows();
+                this.renderBoard();
+                this.updateStatus();
+                this.appendUcciLog('ucinewgame');
+                this.showToast('全新對局已就緒');
+                if (this.autoAnalyze) this.triggerSearch();
+            });
+
+            // 翻轉棋盤
+            safeBind('btnFlipBoard', 'click', () => {
+                this.isFlipped = !this.isFlipped;
+                this.renderGridSvg();
+                this.renderBoard();
+                if (this.lastAnalysisResult) {
+                    this.renderMultiPvArrows(this.lastAnalysisResult.pvList);
+                }
+                this.showToast(this.isFlipped ? '已翻轉為黑方視角' : '已翻轉為紅方視角');
+            });
+
+            // 自由擺棋模式
+            safeBind('btnToggleEdit', 'click', () => {
+                this.isEditMode = !this.isEditMode;
+                if (this.isEditMode) {
+                    this.initPalette();
+                    if (this.domEditPalette) this.domEditPalette.classList.remove('hidden');
+                    if (this.domEditModeLabel) this.domEditModeLabel.textContent = '完成擺盤';
+                    this.showToast('已進入自由擺棋模式');
+                } else {
+                    if (this.domEditPalette) this.domEditPalette.classList.add('hidden');
+                    if (this.domEditModeLabel) this.domEditModeLabel.textContent = '擺棋';
+                    this.showToast('已退出擺棋，恢復分析模式');
+                    if (this.autoAnalyze) this.triggerSearch();
+                }
+                this.selectedSquare = null;
+                this.clearAiArrows();
+                this.renderBoard();
+                this.updateStatus();
+            });
+
+            // 清空盤面
+            safeBind('btnClearBoard', 'click', () => {
+                this.game.board = Array(10).fill(null).map(() => Array(9).fill(null));
+                this.renderBoard();
+                this.updateStatus();
+                this.showToast('盤面已清空');
+            });
+
+            // 音效開關
+            safeBind('btnSoundToggle', 'click', (e) => {
+                this.sound.enabled = !this.sound.enabled;
+                e.currentTarget.textContent = this.sound.enabled ? '🔊' : '🔇';
+                this.showToast(this.sound.enabled ? '音效已開啟' : '音效已靜音');
+            });
+
+            // 單次深度分析
+            safeBind('btnAiRunOnce', 'click', () => {
+                this.triggerSearch();
+                this.showToast('正在執行深度運算...');
+            });
+
+            // 悔棋與導航控制
+            safeBind('btnPrevMove', 'click', () => {
+                const undone = this.game.undoMove();
+                if (undone) {
+                    this.sound.playMove();
+                    this.selectedSquare = null;
+                    this.clearAiArrows();
+                    this.renderBoard();
+                    this.updateStatus();
+                    if (this.autoAnalyze) this.triggerSearch();
+                } else {
+                    this.showToast('已是開局狀態');
+                }
+            });
+
+            safeBind('btnNextMove', 'click', () => {
+                const redone = this.game.redoMove();
+                if (redone) {
+                    this.sound.playMove();
+                    this.selectedSquare = null;
+                    this.clearAiArrows();
+                    this.renderBoard();
+                    this.updateStatus();
+                    if (this.autoAnalyze) this.triggerSearch();
+                } else {
+                    this.showToast('已是最新步數');
+                }
+            });
+
+            safeBind('btnFirstMove', 'click', () => {
+                while (this.game.undoMove());
+                this.selectedSquare = null;
+                this.clearAiArrows();
+                this.renderBoard();
+                this.updateStatus();
+                if (this.autoAnalyze) this.triggerSearch();
+            });
+
+            safeBind('btnLastMove', 'click', () => {
+                while (this.game.redoMove());
+                this.selectedSquare = null;
+                this.clearAiArrows();
+                this.renderBoard();
+                this.updateStatus();
+                if (this.autoAnalyze) this.triggerSearch();
+            });
+
+            // 殘局雲庫真理步
+            if (this.btnQueryCloudEgtb) {
+                this.btnQueryCloudEgtb.addEventListener('click', () => {
+                    this.queryCloudEgtbSilently();
+                    this.showToast('已向象棋雲庫發送查詢請求');
+                });
+            }
+
+            if (this.btnApplyEgtbMove) {
+                this.btnApplyEgtbMove.addEventListener('click', () => {
+                    if (this.cloudBestMoveData) {
+                        this.executeMove(this.cloudBestMoveData);
+                        this.showToast('已走出雲端真理步！');
+                    }
+                });
+            }
+
+            // 大賽名局庫載入
+            if (this.btnLoadTournamentGame) {
+                this.btnLoadTournamentGame.addEventListener('click', () => {
+                    const gameId = this.domSelectTournament ? this.domSelectTournament.value : 'wuyang_2026';
+                    const data = TOURNAMENT_GAMES_DATABASE[gameId];
+                    if (!data) return;
+                    this.game.reset();
+                    data.moves.forEach(m => this.game.makeMove(m));
+                    this.renderBoard();
+                    this.updateStatus();
+                    this.showToast(`已載入名局：${data.event}`);
+                    if (this.autoAnalyze) this.triggerSearch();
+                });
+            }
+
+            // 分頁切換
+            const tabs = [
+                { btn: document.getElementById('tabBtnHistory'), content: document.getElementById('tabContentHistory') },
+                { btn: document.getElementById('tabBtnEgtb'), content: document.getElementById('tabContentEgtb') },
+                { btn: document.getElementById('tabBtnTournament'), content: document.getElementById('tabContentTournament') },
+                { btn: document.getElementById('tabBtnGraph'), content: document.getElementById('tabContentGraph') },
+                { btn: document.getElementById('tabBtnConsole'), content: document.getElementById('tabContentConsole') },
+                { btn: document.getElementById('tabBtnStorage'), content: document.getElementById('tabContentStorage') }
+            ];
+
+            tabs.forEach(t => {
+                if (t.btn && t.content) {
+                    t.btn.addEventListener('click', () => {
+                        tabs.forEach(o => {
+                            if (o.btn) o.btn.className = 'px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-400 border border-slate-800 transition text-xs whitespace-nowrap';
+                            if (o.content) o.content.classList.add('hidden');
+                        });
+                        t.btn.className = 'px-2.5 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold transition text-xs whitespace-nowrap';
+                        t.content.classList.remove('hidden');
+                    });
+                }
+            });
+
+            // UCCI 指令
+            safeBind('btnSendUcci', 'click', () => {
+                if (!this.domInputUcci) return;
+                const cmd = this.domInputUcci.value.trim();
+                if (!cmd) return;
+                this.appendUcciLog(cmd);
+                this.domInputUcci.value = '';
+                if (cmd === 'isready') this.appendUcciLog('readyok');
+                else if (cmd === 'ucinewgame') { this.game.reset(); this.renderBoard(); this.updateStatus(); }
+                else if (cmd.startsWith('go')) this.triggerSearch();
+                else this.appendUcciLog(`command "${cmd}" acknowledged.`);
+            });
+
+            safeBind('btnClearConsole', 'click', () => {
+                if (this.domUcciLog) this.domUcciLog.innerHTML = '<div>日誌已清空...</div>';
+            });
+
+            // 複製本機路徑
+            safeBind('btnCopyPath', 'click', () => {
+                if (this.domSavePath) {
+                    navigator.clipboard.writeText(this.domSavePath.value.trim()).then(() => this.showToast('已複製儲存路徑！'));
+                }
+            });
+
+            // 還原路徑
+            safeBind('btnResetPath', 'click', () => {
+                if (this.domSavePath) {
+                    this.domSavePath.value = 'C:\\Users\\user\\Cherry_2026\\Ryan\\象棋棋譜';
+                    this.showToast('已還原預設路徑！');
+                }
+            });
+
+            // 複製中文棋譜
+            safeBind('btnExportPgn', 'click', () => {
+                const text = this.game.history.map((h, i) => `${i + 1}. ${h.notation}`).join('\r\n');
+                navigator.clipboard.writeText(text).then(() => this.showToast('已複製中文棋譜！'));
+            });
+
+            // 複製 FEN
+            safeBind('btnCopyFen', 'click', () => {
+                navigator.clipboard.writeText(this.game.getFen()).then(() => this.showToast('已複製 FEN 代碼！'));
+            });
+
+            // 存檔 (UTF-8 BOM 防亂碼)
+            safeBind('btnSaveRecordFile', 'click', () => {
+                const now = new Date();
+                const pad = (n) => n.toString().padStart(2, '0');
+                const timeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+                const title = (this.domRecordTitle ? this.domRecordTitle.value.trim() : '') || '棋譜記錄';
+                const fileName = `皮卡魚象棋_${title}_${timeStr}.txt`;
+
+                const movesText = this.game.history.map((h, i) => `${i + 1}. ${h.notation}`).join('\r\n');
+                const rawContent = `[遊戲] 中國象棋 (皮卡魚·小蟲分析譜)\r\n[標題] ${title}\r\n[FEN] ${this.game.getFen()}\r\n-----------------------------------\r\n${movesText}`;
+
+                const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), rawContent], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                this.showToast('棋譜已匯出 (已含 UTF-8 BOM 防亂碼)！');
+            });
+        }
+    }
+
+    // 啟動應用
+    window.addEventListener('DOMContentLoaded', () => {
+        window.pikafishApp = new PikafishUI();
+    });
+    </script>
+</body>
+</html>
